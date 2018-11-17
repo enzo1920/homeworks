@@ -6,10 +6,9 @@ import datetime
 import gzip
 import json
 import logging
-import shutil
 import os
 import re
-import sys
+import shutil
 from collections import namedtuple
 from string import Template
 
@@ -31,7 +30,8 @@ config_file_global = "./log_analyzer.cfg"
 
 
 # считыватель конфига
-def config_reader(cfg_filepath, config_dict=config):
+def config_reader(cfg_filepath, config_dict):
+    config_tuple = namedtuple('config_tuple', ['report_sz', 'report_dir', 'log_dir', 'max_err', 'work_log'])
     # плохо итерироваться по словарю, который перебираем
     config_to_update = config_dict
     if os.path.isfile(cfg_filepath):
@@ -48,7 +48,11 @@ def config_reader(cfg_filepath, config_dict=config):
     # конвертим в инт значения размера отчета
     config_to_update.update({"REPORT_SIZE": int(config_to_update["REPORT_SIZE"])})
     config_to_update.update({"MAX_ERR": int(config_to_update["MAX_ERR"])})
-    return config_to_update
+    new_config = config_tuple(config_to_update["REPORT_SIZE"], config_to_update["REPORT_DIR"],
+                              config_to_update["LOG_DIR"],
+                              config_to_update["MAX_ERR"], config_to_update["WORK_LOG"])
+
+    return new_config
 
 
 # настройка лога
@@ -85,7 +89,6 @@ def openfile(filename, file_ext):
 def log_finder(log_dir):
     dict_files = {}
     max_key = ""
-    # extract_err = 0
     file_tuple = namedtuple('file_tuple', ['filename', 'file_date', 'file_ext'])
     for filename in os.listdir(log_dir):
         match = re.match(r'^nginx-access-ui\.log-(?P<date>\d{8})(?P<file_ext>\.gz)?$', filename)
@@ -149,7 +152,6 @@ def nginx_log_reader(log_dir, file_log, ext, max_errors):
             if lines_cnt > 0:
                 err_percent_cnt = 100 * float(error_counter) / float(lines_cnt)
                 max_err_percent = 100 * float(max_errors) / float(lines_cnt)
-                print(max_err_percent, lines_cnt)
             else:
                 err_percent_cnt = float(1)
                 max_err_percent = float(1)
@@ -158,18 +160,18 @@ def nginx_log_reader(log_dir, file_log, ext, max_errors):
 
 # функция для подсчета процентов на вход словарь с урлами и временем, на выходе словарь урл, время, процент процентами
 @benchmark
-def percent_url_counter(dict, uniq_url, time_sum):
-    dict_percent = dict
+def percent_url_counter(dict_in, uniq_url, time_sum):
+    dict_percent = dict_in
     logging.info("percent_url_counter start")
-    for k, v in dict.iteritems():
-        dict_percent[k]["count_perc"] = 100 * float(dict[k]["cnt"]) / float(uniq_url)
-        dict_percent[k]["time_perc"] = 100 * dict[k]["time_sum"] / float(time_sum)
-        dict_percent[k]["time_avg"] = dict[k]["time_sum"] / dict[k]["cnt"]
+    for k, v in dict_in.iteritems():
+        dict_percent[k]["count_perc"] = 100 * float(dict_in[k]["cnt"]) / float(uniq_url)
+        dict_percent[k]["time_perc"] = 100 * dict_in[k]["time_sum"] / float(time_sum)
+        dict_percent[k]["time_avg"] = dict_in[k]["time_sum"] / dict_in[k]["cnt"]
         list_to_max = dict_percent[k]["time_mass"]
         dict_percent[k]["time_max"] = max(list_to_max)
         dict_percent[k]["time_med"] = median(list_to_max)
 
-    return dict
+    return dict_percent
 
 
 # функция возвращает топ записей из массива
@@ -202,8 +204,9 @@ def top_values(dict_stat, top_count):
 # функция рендеринга html файла
 def json_templater(json_array, report_dir, date_stamp):
     file_report = os.path.join(report_dir, 'report.html')  # файл шаблона
-    file_report_rend = os.path.join(report_dir, 'report-{0}.{1}'.fromat(date_stamp.strftime("%Y.%m.%d"), 'html'))
-    file_report_rend_tmp=os.path.join(report_dir, 'report-{0}_{1}.{2}'.fromat(date_stamp.strftime("%Y.%m.%d"),'tmp', 'html'))
+    file_report_rend = os.path.join(report_dir, 'report-{0}.{1}'.format(date_stamp.strftime("%Y.%m.%d"), 'html'))
+    file_report_rend_tmp = os.path.join(report_dir,
+                                        'report-{0}_{1}.{2}'.format(date_stamp.strftime("%Y.%m.%d"), 'tmp', 'html'))
     logging.info(file_report)
     if os.path.isfile(file_report):
         with open(file_report, 'r') as report_template:
@@ -212,32 +215,30 @@ def json_templater(json_array, report_dir, date_stamp):
             data_export = t.safe_substitute(table_json=json_array)
         with open(file_report_rend_tmp, 'w') as output_file:
             output_file.write(data_export)
-        #переписываем в отчет
-        shutil.move(file_report_rend, file_report_rend_tmp)
+        # переписываем в отчет
+        shutil.move(file_report_rend_tmp, file_report_rend)
     else:
         logging.error(file_report + ' file not found')
 
 
-def main(config_dictionary):
-    report_sz = config_dictionary["REPORT_SIZE"]
-    rep_dir = config_dictionary["REPORT_DIR"]
-    wl = config_dictionary["WORK_LOG"]
-    logfolder = config_dictionary["LOG_DIR"]
-    max_err = config_dictionary["MAX_ERR"]
-    worker_log(wl)  # инициализация лога
-    file_info = log_finder(logfolder)
-    if os.path.exists(os.path.join(rep_dir, 'report-{0}.{1}'.format(file_info.file_date.strftime("%Y.%m.%d"), 'html'))):
+def main(config_tuple):
+    worker_log(config_tuple.work_log)  # инициализация лога
+    file_info = log_finder(config_tuple.log_dir)
+    if os.path.exists(os.path.join(config_tuple.report_dir,
+                                   'report-{0}.{1}'.format(file_info.file_date.strftime("%Y.%m.%d"), 'html'))):
         logging.info(" REPORT уже существует. Повторный запуск не требуется")
     else:
-        timeurls, errcnt, uniquecnt, total_cnt, total_time, err_perc_cnt, max_erros_perc = nginx_log_reader(logfolder, file_info.filename,
-                                                                              file_info.file_ext, max_err)
+        timeurls, errcnt, uniquecnt, total_cnt, total_time, err_perc_cnt, max_erros_perc = nginx_log_reader(
+            config_tuple.log_dir,
+            file_info.filename,
+            file_info.file_ext,
+            config_tuple.max_err)
         if err_perc_cnt < max_erros_perc:
             final_dict = percent_url_counter(timeurls, uniquecnt, total_time)
-            json_mass = top_values(final_dict, report_sz)
-            json_templater(json_mass, rep_dir, file_info.file_date)
+            json_mass = top_values(final_dict, config_tuple.report_sz)
+            json_templater(json_mass, config_tuple.report_dir, file_info.file_date)
         else:
-            logging.exception('Log parse max errors is {0}% . Exit program!!!!!'.format(str(max_erros_perc)))
-            sys.exit()  # убрать
+            logging.exception('Maximum error threshold reached {0}% . Exit program!!!!!'.format(str(max_erros_perc)))
 
 
 if __name__ == "__main__":
@@ -246,10 +247,10 @@ if __name__ == "__main__":
     parser.add_argument('--config', help="Config file path", default=config_file_global)
     args = parser.parse_args()
     if args.config:
-        dict_config = config_reader(args.config)
+        conf_tup = config_reader(args.config, config)
     else:
-        dict_config = config_reader(config_file_global)
+        conf_tup = config_reader(config_file_global, config)
     try:
-        main(dict_config)
+        main(conf_tup)
     except Exception as exc:
         logging.exception(exc)
