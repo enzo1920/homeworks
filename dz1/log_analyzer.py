@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import copy
 from collections import namedtuple
 from string import Template
 
@@ -19,29 +20,28 @@ from string import Template
 #                     '$request_time';
 
 
-config = {
+DEFAULT_CONFIG = {
     "REPORT_SIZE": 20,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
     "MAX_ERR": 30,
     "WORK_LOG": "./work_log"
 }
-config_file_global = "./log_analyzer.cfg"
+CONFIG_FILE_GLOBAL = "./log_analyzer.cfg"
 
 
 # считыватель конфига
 def config_reader(cfg_filepath, config_dict):
     config_tuple = namedtuple('config_tuple', ['report_sz', 'report_dir', 'log_dir', 'max_err', 'work_log'])
     # плохо итерироваться по словарю, который перебираем
-    config_to_update = config_dict
+    config_to_update = copy.deepcopy(config_dict)
     if os.path.isfile(cfg_filepath):
-        config_file = config_file_global
         config = ConfigParser.RawConfigParser()
         config.read(cfg_filepath)
         for section_name in config.sections():
             for name, value in config.items(section_name):
                 name = name.upper()
-                if (name in config_dict):
+                if name in config_dict:
                     config_to_update.update({name: value})
     else:
         logging.info("config file not found. I will use default config")
@@ -78,8 +78,8 @@ def benchmark(original_func):
     return wrapper
 
 
-def openfile(filename, file_ext):
-    if file_ext == '.gz':
+def openfile(filename):
+    if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')
     else:
         return open(filename, 'r')
@@ -90,15 +90,18 @@ def log_finder(log_dir):
     dict_files = {}
     max_key = ""
     file_tuple = namedtuple('file_tuple', ['filename', 'file_date', 'file_ext'])
-    for filename in os.listdir(log_dir):
+    for filename in enumerate(os.listdir(log_dir)):
         match = re.match(r'^nginx-access-ui\.log-(?P<date>\d{8})(?P<file_ext>\.gz)?$', filename)
         if not match:
             continue
-        file_ext = match.groupdict()['file_ext']
-        extract_date = datetime.datetime.strptime(match.groupdict()['date'], '%Y%m%d')
-        dict_files.update({filename: {'filedate': extract_date.date(), 'ext': file_ext}})
+
+        try:
+            extract_date = datetime.datetime.strptime(match.groupdict()['date'], '%Y%m%d')
+        except Exception as exc:
+            logging.exception(exc)
+        dict_files.update({filename: {'filedate': extract_date.date()}})
     max_key = max(dict_files.keys(), key=(lambda k: dict_files[k]))
-    last_file = file_tuple(max_key, dict_files[max_key]["filedate"], dict_files[max_key]["ext"])
+    last_file = file_tuple(max_key, dict_files[max_key]["filedate"])
     return last_file
 
 
@@ -114,7 +117,7 @@ def median(lst):
 
 
 @benchmark
-def nginx_log_reader(log_dir, file_log, ext, max_errors):
+def nginx_log_reader(log_dir, file_log, max_errors):
     logging.info("reader start")
     error_counter = 0  # счетчик ошибок
     unique_urlcnt = 0  # счетчик уникальных урлов
@@ -123,39 +126,38 @@ def nginx_log_reader(log_dir, file_log, ext, max_errors):
     file_log = os.path.join(log_dir, file_log)
     if not os.path.isfile(file_log):
         return
-    else:
-        with openfile(file_log, ext) as inputfile:
-            lines_cnt = 0  # ограничемся пока 1000 строк
-            for line in inputfile:
-                finded = line.split(' ')
-                urls = finded[7].strip()
-                time = float(line[-6:])
-                # словарь статистики состоит из:time_url-время урла , url_count количества
-                time_list = []  # список времени для урла,по нему будем считать медиану
-                try:
-                    if urls in time_urls:
-                        time_list = time_urls[urls]['time_mass']
-                        time_list.append(time)
-                        time_urls.update({urls: {"time_sum": time_urls[urls]['time_sum'] + time,
-                                                 "time_mass": time_list, "cnt": time_urls[urls]["cnt"] + 1}})
-                    else:
-                        time_list.append(time)
-                        time_urls.update({urls: {"time_sum": time, "time_mass": time_list, "cnt": 1}})
-                        unique_urlcnt += 1
+    with openfile(file_log) as inputfile:
+        lines_cnt = 0  # ограничемся пока 1000 строк
+        for line in inputfile:
+            finded = line.split(' ')
+            urls = finded[7].strip()
+            time = float(line[-6:])
+            # словарь статистики состоит из:time_url-время урла , url_count количества
+            time_list = []  # список времени для урла,по нему будем считать медиану
+            try:
+                if urls in time_urls:
+                    time_list = time_urls[urls]['time_mass']
+                    time_list.append(time)
+                    time_urls.update({urls: {"time_sum": time_urls[urls]['time_sum'] + time,
+                                             "time_mass": time_list, "cnt": time_urls[urls]["cnt"] + 1}})
+                else:
+                    time_list.append(time)
+                    time_urls.update({urls: {"time_sum": time, "time_mass": time_list, "cnt": 1}})
+                    unique_urlcnt += 1
 
-                except Exception as exc:
-                    error_counter += 1
-                    logging.exception(exc)
-                lines_cnt += 1
-                timetotal_url += time
-            # доля ошибок парсинга
-            if lines_cnt > 0:
-                err_percent_cnt = 100 * float(error_counter) / float(lines_cnt)
-                max_err_percent = 100 * float(max_errors) / float(lines_cnt)
-            else:
-                err_percent_cnt = float(1)
-                max_err_percent = float(1)
-    return time_urls, error_counter, unique_urlcnt, lines_cnt, timetotal_url, err_percent_cnt, max_err_percent
+            except Exception as exc:
+                error_counter += 1
+                logging.exception(exc)
+            lines_cnt += 1
+            timetotal_url += time
+        # доля ошибок парсинга
+        if lines_cnt > 0:
+            err_percent_cnt = 100 * float(error_counter) / float(lines_cnt)
+            max_err_percent = 100 * float(max_errors) / float(lines_cnt)
+        else:
+            err_percent_cnt = float(1)
+            max_err_percent = float(1)
+    return time_urls, unique_urlcnt, timetotal_url, err_percent_cnt, max_err_percent
 
 
 # функция для подсчета процентов на вход словарь с урлами и временем, на выходе словарь урл, время, процент процентами
@@ -193,16 +195,14 @@ def top_values(dict_stat, top_count):
                                })
         cntgot += 1
         if cntgot == top_count:
-            logging.info("top_values: получено запрошенное количество значений . ")
-            jsonarr = json.dumps(list_to_render)
+            logging.info("top_values: received requested number of values.")
             break
-        else:
-            jsonarr = json.dumps(list_to_render[cntgot - 1])
-    return jsonarr
+    return list_to_render
 
 
 # функция рендеринга html файла
-def json_templater(json_array, report_dir, date_stamp):
+def json_templater(input_list, report_dir, date_stamp):
+    json_array = json.dumps(input_list)
     file_report = os.path.join(report_dir, 'report.html')  # файл шаблона
     file_report_rend = os.path.join(report_dir, 'report-{0}.{1}'.format(date_stamp.strftime("%Y.%m.%d"), 'html'))
     file_report_rend_tmp = os.path.join(report_dir,
@@ -226,17 +226,16 @@ def main(config_tuple):
     file_info = log_finder(config_tuple.log_dir)
     if os.path.exists(os.path.join(config_tuple.report_dir,
                                    'report-{0}.{1}'.format(file_info.file_date.strftime("%Y.%m.%d"), 'html'))):
-        logging.info(" REPORT уже существует. Повторный запуск не требуется")
+        logging.info(" REPORT exists. No restart required")
     else:
-        timeurls, errcnt, uniquecnt, total_cnt, total_time, err_perc_cnt, max_erros_perc = nginx_log_reader(
+        timeurls, uniquecnt, total_time, err_perc_cnt, max_erros_perc = nginx_log_reader(
             config_tuple.log_dir,
             file_info.filename,
-            file_info.file_ext,
             config_tuple.max_err)
         if err_perc_cnt < max_erros_perc:
             final_dict = percent_url_counter(timeurls, uniquecnt, total_time)
-            json_mass = top_values(final_dict, config_tuple.report_sz)
-            json_templater(json_mass, config_tuple.report_dir, file_info.file_date)
+            list_values = top_values(final_dict, config_tuple.report_sz)
+            json_templater(list_values, config_tuple.report_dir, file_info.file_date)
         else:
             logging.exception('Maximum error threshold reached {0}% . Exit program!!!!!'.format(str(max_erros_perc)))
 
@@ -244,12 +243,9 @@ def main(config_tuple):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', help="Config file path", default=config_file_global)
+    parser.add_argument('--config', help="Config file path", default=CONFIG_FILE_GLOBAL)
     args = parser.parse_args()
-    if args.config:
-        conf_tup = config_reader(args.config, config)
-    else:
-        conf_tup = config_reader(config_file_global, config)
+    conf_tup = config_reader(args.config or CONFIG_FILE_GLOBAL, DEFAULT_CONFIG)
     try:
         main(conf_tup)
     except Exception as exc:
