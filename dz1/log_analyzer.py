@@ -89,8 +89,8 @@ def openfile(filename):
 def log_finder(log_dir):
     dict_files = {}
     max_key = ""
-    file_tuple = namedtuple('file_tuple', ['filename', 'file_date', 'file_ext'])
-    for filename in enumerate(os.listdir(log_dir)):
+    file_tuple = namedtuple('file_tuple', ['filename', 'file_date'])
+    for filename in os.listdir(log_dir):
         match = re.match(r'^nginx-access-ui\.log-(?P<date>\d{8})(?P<file_ext>\.gz)?$', filename)
         if not match:
             continue
