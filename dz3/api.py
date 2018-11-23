@@ -89,17 +89,22 @@ class BirthDayField(DateField):
     def checker(self, value):
         value = super(BirthDayField.self).checker(value)
         if (datetime.today() - value).days / 365.2425 > 70:
-            raise ValueError("Birth Day error not valid ")
+            raise ValueError("Birthday error: more than 70 years old ")
         return value
 
 
-class GenderField(object):
-    pass
+class GenderField(Field):
+    def checker(self, value):
+        if value not in GENDERS:
+            raise ValueError("Value not in genders")
+        return value
 
 
 class ClientIDsField(object):
-    pass
-
+    def checker(self, value):
+        if not isinstance(value, list) or any(isinstance(x, (int, long)) for x in lst):
+            raise ValueError("Clients_ids not in valid")
+        return value
 
 class ClientsInterestsRequest(object):
     client_ids = ClientIDsField(required=True)
