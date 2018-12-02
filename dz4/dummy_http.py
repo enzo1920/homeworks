@@ -46,7 +46,7 @@ class HTTPServ(object):
             while True:
                 events = self.epoll.poll(1)
                 for fileno, event in events:
-                    #print("i'm from {} my pid is {}".format(str(fileno), str(os.getpid())))
+                    #logging.info("fn :{} pid {}".format(str(fileno),str(os.getpid())))
                     if fileno == self.serversocket.fileno():
                         connection, address = self.serversocket.accept()
                         connection.setblocking(0)
@@ -69,6 +69,8 @@ class HTTPServ(object):
                         self.epoll.unregister(fileno)
                         self.connections[fileno].close()
                         del self.connections[fileno]
+        except Exception as exc:
+            logging.error(exc)
         finally:
             self.epoll.unregister(self.serversocket.fileno())
             self.epoll.close()
@@ -87,12 +89,12 @@ def main():
     logging.info(os.getpid())
     try:
         # workers = []
-        process_list = [multiprocessing.Process(target=srv.worker, args=()) for i in range(3)]
+        process_list = [multiprocessing.Process(target=srv.worker, args=()) for i in range(5)]
         print(process_list)
         for i, p in enumerate(process_list):
-            logging.info('process {} will start'.format(i + 1))
             p.start()
-            print(p, p.is_alive())
+            logging.info('process {} will start'.format(i + 1))
+            logging.info(p.is_alive())
             time.sleep(0.1)
             # p.join()
 
