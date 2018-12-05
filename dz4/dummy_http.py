@@ -99,7 +99,7 @@ def main():
                                                                 'log'))
     logging.basicConfig(filename=worklog_file, level=logging.INFO,
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-    srv = HTTPServ('188.227.18.141', args.p, args.r)
+    srv = HTTPServ('127.0.0.1', args.p, args.r)
     srv.create_servsock()
     logging.info("server started")
     logging.info(os.getpid())
