@@ -28,13 +28,12 @@ class HTTPServ(object):
 
     def create_servsock(self):
         self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.serversocket.bind((self.host, self.port))
-        self.serversocket.listen(5000)
+        self.serversocket.listen(50)
         self.serversocket.setblocking(0)
         print('srv pid:{}'.format(str(os.getpid())))
-        return self.serversocket
 
     def epol_connect(self):
         ed = select.epoll()
@@ -56,7 +55,7 @@ class HTTPServ(object):
                         requests[connection.fileno()] = b''
                         responses[connection.fileno()] = RESPONSE
 
-                    except self.serversocket.error as ex:
+                    except Exception as ex:
                         logging.error('err_accept:{}'.format(ex))
                 elif event & select.EPOLLIN:
                     try:
