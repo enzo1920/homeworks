@@ -9,8 +9,6 @@ import select
 import socket
 import time
 
-from http_request import HttpRequest
-from http_response import *
 
 EOL1 = b'\n\n'
 EOL2 = b'\n\r\n'
