@@ -15,7 +15,8 @@ Flags:
 -w, process worker, default 6`
 
 ##Running the tests
-## ApacheBench
+##ApacheBench
+```
 Server Software:        dummy_http`
 Server Hostname:        188.227.18.141`
 Server Port:            8080`
@@ -50,9 +51,9 @@ Percentage of the requests served within a certain time (ms)`
   98%     34`
   99%     40`
  100%   8615 (longest request)`
-
+```
 ## httptest.py
-
+```
 directory index file exists ... ok`
 document root escaping forbidden ... ok`
 Send bad http headers ... ok`
@@ -77,9 +78,10 @@ post method forbidden ... ok`
 Server header exists ... ok`
 
 ----------------------------------------------------------------------`
-Ran 22 tests in 0.242s`
-OK
+Ran 22 tests in 0.242s
 
+OK
+```
 
 
 
