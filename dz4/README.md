@@ -18,7 +18,7 @@ Flags:
 
 
 ## Running the tests
-#ApacheBench
+## ApacheBench
 
 
 Server Software:        dummy_http
@@ -57,7 +57,7 @@ Percentage of the requests served within a certain time (ms)
   99%     40
  100%   8615 (longest request)
 
-#httptest
+## httptest.py
 
 directory index file exists ... ok
 document root escaping forbidden ... ok
