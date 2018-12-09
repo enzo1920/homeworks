@@ -1,7 +1,7 @@
 #!/usr/bin/python
-from datetime import datetime as DateTime
-import urllib
 import os
+import urllib
+from datetime import datetime as DateTime
 
 OK = 200
 BAD_REQUEST = 400
@@ -43,17 +43,15 @@ class Resource(object):
         self.length = len(self.data)
 
 
-
 class HttpResponse(object):
-    #DOCUMENT_ROOT = None
-    SERVER_NAME = 'httpsrv1'
 
-    def __init__(self, req, root_directory):
+    def __init__(self, req, root_directory,srv_name):
         self.data = None
         self.cur = 0
         self.headers = {}
         self.resource = None
         self.root_dir = os.path.abspath(root_directory)
+        self.srv_name = srv_name
         self.build_response(req)
 
     def build_response(self, req):
@@ -62,12 +60,11 @@ class HttpResponse(object):
             self.render4xx(400)
         elif req.method in ('HEAD', 'GET'):
             path = self.path_from_uri(req.uri)
-            #print(req.method)
+            # print(req.method)
             if path[:len(self.root_dir)] != self.root_dir:
                 print(path[:len(self.root_dir)], self.root_dir)
                 self.render4xx(403)
                 return
-            print('load source {}'.format(path))
             self.load_resource(path)
             if self.resource:
                 self.data = 'HTTP/1.0 200 OK\r\n'
@@ -83,7 +80,6 @@ class HttpResponse(object):
         else:
             self.render4xx(405)
 
-    
     def render4xx(self, code):
         self.data = data = 'HTTP/1.1 {} {} '.format(code, ERRORS.get(code))
         self.render_headers()
@@ -96,7 +92,7 @@ class HttpResponse(object):
         path = urllib.unquote(uri).decode('utf-8')
         path = path.split('?', 1)[0]
         path = os.path.join(self.root_dir, path)
-        #print(os.path.abspath(path))
+        # print(os.path.abspath(path))
         return os.path.abspath(path)
 
     def load_resource(self, path):
@@ -107,7 +103,7 @@ class HttpResponse(object):
     def set_headers(self):
         self.headers['Connection'] = 'close'
         self.headers['Date'] = self.httpdate(DateTime.utcnow())
-        self.headers['Server'] = self.SERVER_NAME
+        self.headers['Server'] = self.srv_name
         if self.resource:
             if self.resource.type:
                 self.headers['Content-Type'] = self.resource.type
@@ -137,4 +133,3 @@ class HttpResponse(object):
                  "Oct", "Nov", "Dec"][dt.month - 1]
         return "%s, %02d %s %04d %02d:%02d:%02d GMT" % (weekday, dt.day, month,
                                                         dt.year, dt.hour, dt.minute, dt.second)
-

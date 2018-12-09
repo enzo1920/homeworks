@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+from http_response import HttpResponse, Resource
+from http_request import HttpRequest
 import multiprocessing
 import datetime
 import argparse
@@ -9,28 +11,20 @@ import socket
 import time
 import os
 
-from http_request import HttpRequest
-from http_response import HttpResponse, Resource
 
-EOL1 = b'\n\n'
-EOL2 = b'\n\r\n'
 
-RESPONSE = b'HTTP/1.0 200 OK\r\nDate: Mon, 1 Jan 1996 01:01:01 GMT\r\n'
-RESPONSE += b'Content-Type: text/plain\r\nContent-Length: 13\r\n\r\n'
-RESPONSE += b'Hello, world!'
 
 EPOLLEXCLUSIVE = 1 << 28
 LOG_DIR = "./log"
-
-
-
+SERVER_NAME = 'dummy_http'
 
 
 class HTTPServ(object):
-    def __init__(self, host, port, root_dir):
+    def __init__(self, host, port, root_dir,server_name):
         self.host = host
         self.port = port
         self.rtdir = root_dir
+        self.srv_name = server_name
 
     def create_servsock(self):
         self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -68,19 +62,11 @@ class HTTPServ(object):
                         req.add_data(data)
                         if req.is_ready:
                             ed.modify(fileno, select.EPOLLOUT)
-                            responses[fileno] = HttpResponse(req, self.rtdir)
+                            responses[fileno] = HttpResponse(req, self.rtdir, self.srv_name)
                     except Exception as ex:
                         logging.exception('erorror read:{}'.format(ex))
                 elif event & select.EPOLLOUT:
                     try:
-                        '''client = self.clients[fileno]
-                           resp = self.responses[fileno]
-                           data = resp.read(1024)
-                           nbytes = client.send(data)
-                           resp.seek(nbytes)
-                           if resp.is_empty():
-                               client.shutdown(socket.SHUT_RDWR)
-                               self._close_client(fileno)'''
                         connection = connections[fileno]
                         resp = responses[fileno]
                         data = resp.read(1024)
@@ -119,7 +105,7 @@ def main():
                                                                 'log'))
     logging.basicConfig(filename=worklog_file, level=logging.INFO,
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-    srv = HTTPServ('188.227.18.141', args.p, args.r)
+    srv = HTTPServ('188.227.18.141', args.p, args.r, SERVER_NAME)
     srv.create_servsock()
     logging.info("server started")
     logging.info(os.getpid())
@@ -141,7 +127,6 @@ def main():
             print(worker_p)
             if worker_p:
                 worker_p.terminate()
-
 
 if __name__ == '__main__':
     main()
