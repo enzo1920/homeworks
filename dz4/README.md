@@ -6,8 +6,8 @@
 
 python2.7
 
-Give examples
-run:./dummy_http.py  для запуска с настройками по умолчанию
+###Give examples
+* run: ./dummy_http.py  для запуска с настройками по умолчанию
 ```
 Flags:
  -r  root directory, default  ./www`
