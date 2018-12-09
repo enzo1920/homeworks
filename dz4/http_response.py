@@ -27,7 +27,7 @@ CONTENT_TYPE = {
   'png': 'image/png',
   'gif': 'image/gif',
 }
-
+METHODS = ['GET', 'HEAD']
 
 class Resource(object):
   def __init__(self, path):
@@ -45,7 +45,7 @@ class Resource(object):
 
 class HttpResponse(object):
 
-  def __init__(self, req, root_directory,srv_name):
+  def __init__(self, req, root_directory, srv_name):
     self.data = None
     self.cur = 0
     self.headers = {}
@@ -57,29 +57,29 @@ class HttpResponse(object):
   def build_response(self, req):
     self.set_headers()
     if not req.is_valid:
-      self.render4xx(400)
-    elif req.method in ('HEAD', 'GET'):
+      self.get_error(400, req.version)
+    elif req.method in METHODS:
       path = self.path_from_url(req.url)
       if path[:len(self.root_dir)] != self.root_dir:
-        self.render4xx(403)
+        self.get_error(403, req.version)
         return
       self.load_resource(path)
       if self.resource:
-        self.data = 'HTTP/1.0 200 OK\r\n'
+        self.data = '{} 200 OK\r\n'.format(req.version)
         self.set_headers()
         self.render_headers()
         if req.method == 'GET':
           self.render_body()
       else:
         if req.url[-1] == '/':
-          self.render4xx(403)
+          self.get_error(403, req.version)
         else:
-          self.render4xx(404)
+          self.get_error(404, req.version)
     else:
-      self.render4xx(405)
+      self.get_error(405, req.version)
 
-  def render4xx(self, code):
-    self.data = 'HTTP/1.1 {} {} '.format(code, ERRORS.get(code))
+  def get_error(self, code, http_ver):
+    self.data = '{} {} {} '.format(http_ver, code, ERRORS.get(code))
     self.render_headers()
 
   def path_from_url(self, url):

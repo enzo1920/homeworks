@@ -11,13 +11,10 @@ import socket
 import time
 import os
 
-
-
-
 EPOLLEXCLUSIVE = 1 << 28
 LOG_DIR = "./log"
 SERVER_NAME = 'dummy_http'
-
+SERVER_IP = '188.227.18.141'
 
 class HTTPServ(object):
   def __init__(self, host, port, root_dir,server_name):
@@ -105,28 +102,26 @@ def main():
                                 'log'))
   logging.basicConfig(filename=worklog_file, level=logging.INFO,
             format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-  srv = HTTPServ('188.227.18.141', args.p, args.r, SERVER_NAME)
+  srv = HTTPServ(SERVER_IP, args.p, args.r, SERVER_NAME)
   srv.create_servsock()
-  logging.info("server started")
+  logging.info("server {} started".format(SERVER_NAME))
   logging.info(os.getpid())
   try:
     process_list = [multiprocessing.Process(target=srv.ephandle, args=()) for i in range(args.w)]
     for i, p in enumerate(process_list):
       p.start()
       logging.info('process {}  started'.format(i + 1))
-      logging.info(p.is_alive())
-      print(p)
+      logging.info(p)
       time.sleep(0.1)
     for p in process_list:
       p.join()
-
-
   except KeyboardInterrupt:
-    print(process_list)
     for worker_p in process_list:
-      print(worker_p)
       if worker_p:
         worker_p.terminate()
 
 if __name__ == '__main__':
-  main()
+  try:
+    main()
+  except Exception as exc:
+    logging.exception(exc)
