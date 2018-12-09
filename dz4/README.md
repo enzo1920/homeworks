@@ -1,20 +1,19 @@
-# HTTP server#
+#HTTP server
 Асинхронный веб сервер частично реализующий протокол HTTP, prefork .
-## Getting Started##
+##Getting Started
 
-### Prerequisites###
+### Prerequisites
 
 python2.7
 
 
 Give examples
-run:
-./dummy_http.py  для запуска с настройками по умолчанию
+run:./dummy_http.py  для запуска с настройками по умолчанию
 Flags:
--r  root directory, default  ./www`
--l, log directory, default./log`
--p, port  default   8080`
--w, process worker, default 6`
+*-r  root directory, default  ./www`
+*-l, log directory, default./log`
+*-p, port  default   8080`
+*-w, process worker, default 6`
 
 
 ## Running the tests##
