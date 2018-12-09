@@ -14,7 +14,7 @@ import os
 EPOLLEXCLUSIVE = 1 << 28
 LOG_DIR = "./log"
 SERVER_NAME = 'dummy_http'
-SERVER_IP = '188.227.18.141'
+SERVER_IP = '127.0.0.1'
 
 class HTTPServ(object):
   def __init__(self, host, port, root_dir,server_name):
@@ -26,11 +26,9 @@ class HTTPServ(object):
   def create_servsock(self):
     self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     self.serversocket.bind((self.host, self.port))
     self.serversocket.listen(50)
     self.serversocket.setblocking(0)
-    print('srv pid:{}'.format(str(os.getpid())))
 
   def ephandle(self):
     ed = select.epoll()

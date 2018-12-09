@@ -71,9 +71,6 @@ class HttpResponse(object):
         if req.method == 'GET':
           self.render_body()
       else:
-        if req.url[-1] == '/':
-          self.get_error(403, req.version)
-        else:
           self.get_error(404, req.version)
     else:
       self.get_error(405, req.version)
@@ -90,7 +87,6 @@ class HttpResponse(object):
     path = urllib.unquote(url).decode('utf-8')
     path = path.split('?', 1)[0]
     path = os.path.join(self.root_dir, path)
-    print(os.path.abspath(path))
     return os.path.abspath(path)
 
   def load_resource(self, path):
