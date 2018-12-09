@@ -1,4 +1,4 @@
-#HTTP server
+# HTTP server
 Асинхронный веб сервер частично реализующий протокол HTTP, prefork.
 
 
@@ -15,10 +15,11 @@ Flags:
  -p, port  default   8080`
  -w, process worker, default 6`
 ```
-##Running the tests
+## Running the tests
+### ApacheBench
 
 ```
-ApacheBench
+
 Server Software:        dummy_http`
 Server Hostname:        188.227.18.141`
 Server Port:            8080`
@@ -54,7 +55,7 @@ Percentage of the requests served within a certain time (ms)`
   99%     40`
  100%   8615 (longest request)`
 ```
-## httptest.py
+### httptest.py
 ```
 directory index file exists ... ok`
 document root escaping forbidden ... ok`
