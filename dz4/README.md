@@ -8,12 +8,13 @@ python2.7
 
 Give examples
 run:./dummy_http.py  для запуска с настройками по умолчанию
-Flags:
--r  root directory, default  ./www`
--l, log directory, default./log`
--p, port  default   8080`
--w, process worker, default 6`
-
+```
+*Flags:
+ -<b> -r  root directory, default  ./www`
+ -<b> -l, log directory, default./log`
+ -<b> -p, port  default   8080`
+ -<b> -w, process worker, default 6`
+```
 ##Running the tests
 ##ApacheBench
 ```
