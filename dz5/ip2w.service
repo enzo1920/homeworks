@@ -1,0 +1,9 @@
+[Unit]
+Description=uWSGI ip2w server
+
+[Service]
+ExecStartPre=-/usr/bin/bash -c 'mkdir -p /run/ip2w; chown nginx:nginx /run/ip2w'
+ExecStart=/usr/bin/bash -c 'uwsgi --ini /usr/local/etc/ip2w/ip2w.ini'
+
+[Install]
+WantedBy=multi-user.target

@@ -50,18 +50,18 @@ def read_config(path):
 
 
 '''retry decorator'''
-def retry(count, delay_in_seconds):
-  def deco(fn):
-    @wraps(fn)
-    def wrapper(*args, **kvargs):
-      for x in xrange(count):
-        try:
-            return fn(*args, **kvargs)
-        except:
-            sleep(delay_in_seconds)
-      return fn(*args, **kvargs)
-    return wrapper
-  return deco
+def deco_retry(f,tries,delay):
+    @wraps(f)
+    def f_retry(*args, **kwargs):
+      mtries, mdelay = tries, delay
+      while mtries > 1:
+          try:
+            return f(*args, **kwargs)
+          except:
+            time.sleep(mdelay)
+            mtries -= 1
+            return f(*args, **kwargs)
+    return f_retry
 
 
 
@@ -94,7 +94,6 @@ def get_location_by_ip(ip):
 
 
 def get_weather(lat, lon):
-
   with open(SECRET) as fd:
     whether_apikey = json.loads(fd.read())['apikey']
   url = 'http://api.openweathermap.org/data/2.5/weather?lat=%s&lon=%s&APPID=%s' % (lat, lon, whether_apikey)
@@ -116,9 +115,10 @@ def application(environ, start_response):
   ip = url.split('/')[-1]
   try:
     if is_valid_ipv4_address(ip):
-      lat, lon = get_location_by_ip(ip)
-      print(lat, lon)
-      weather = get_weather(lat, lon)
+      dec_get_location_by_ip = deco_retry(get_location_by_ip, config["max_retries"], config["timeout"])
+      dec_get_weather = deco_retry(get_weather, config["max_retries"], config["timeout"])
+      lat, lon = dec_get_location_by_ip(ip)
+      weather = dec_get_weather(lat, lon)
       code = 200
       status = '{} {}'.format(code, ERRORS.get(code))
       body = json.dumps(weather)
@@ -131,7 +131,7 @@ def application(environ, start_response):
     code = 500
     status = '{} {}'.format(code, ERRORS.get(code))
     body = json.dumps({'error': str(ex)})
-    logging.error('application'.format(str(ex)))
+    logging.error('application {} '.format(str(ex)))
   start_response(status, [('Content-Type', 'application/json'),
                             ('Content-Length', str(len(body)))])
   return [body]
