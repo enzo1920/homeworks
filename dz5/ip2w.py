@@ -11,9 +11,6 @@ import time
 import socket
 import os
 
-OK = 200
-BAD_REQUEST = 400
-INTERNAL_ERROR = 500
 
 OK = 200
 BAD_REQUEST = 400
@@ -76,7 +73,6 @@ def is_valid_ipv4_address(address):
         return address.count('.') == 3
     except socket.error:  # not a valid address
         return False
-
     return True
 
 
@@ -112,8 +108,10 @@ def application(environ, start_response):
   config = read_config(CONFIG_PATH)
   set_logging(config["logto"])
   url = environ['REQUEST_URI']
-  ip = url.split('/')[-1]
+  logging.info('url {} '.format(url))
   try:
+    ip = url.split('/')[-1]
+    print(ip)
     if is_valid_ipv4_address(ip):
       dec_get_location_by_ip = deco_retry(get_location_by_ip, config["max_retries"], config["timeout"])
       dec_get_weather = deco_retry(get_weather, config["max_retries"], config["timeout"])
@@ -123,10 +121,10 @@ def application(environ, start_response):
       status = '{} {}'.format(code, ERRORS.get(code))
       body = json.dumps(weather)
     else:
-        code = 400
-        status = '{} {}'.format(code, ERRORS.get(code))
-        body = json.dumps({'error': 'invalid IP'})
-        logging.error('not valid ip {}'.format())
+      code = 400
+      status = '{} {}'.format(code, ERRORS.get(code))
+      body = json.dumps({'error': 'invalid IP'})
+      logging.error('not valid ip {}'.format(str(ip)))
   except Exception as ex:
     code = 500
     status = '{} {}'.format(code, ERRORS.get(code))
