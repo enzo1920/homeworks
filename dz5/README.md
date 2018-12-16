@@ -22,7 +22,7 @@ ip2w-0.0.1-1.noarch.rpm
  
 systemctl start ip2w
 
-```
+
 ### Query 
 ```
 curl http://your_ip:8080/87.250.250.242
