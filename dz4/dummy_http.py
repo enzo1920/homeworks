@@ -41,50 +41,61 @@ class HTTPServ(object):
       events = ed.poll()
       for fileno, event in events:
         if fileno == self.serversocket.fileno():
-          try:
-            connection, address = self.serversocket.accept()
-            connection.setblocking(0)
-            ed.register(connection.fileno(), select.EPOLLIN)
-            connections[connection.fileno()] = connection
-            requests[connection.fileno()] = HttpRequest()
-          except Exception as ex:
-            logging.error('err_accept:{}'.format(ex))
+           self.accept_client(ed, connections, requests)
         elif event & select.EPOLLIN:
-          # handle input data
-          try:
-            data = connections[fileno].recv(1024)
-            req = requests[fileno]
-            req.add_data(data)
-            if req.is_ready:
-              ed.modify(fileno, select.EPOLLOUT)
-              responses[fileno] = HttpResponse(req, self.rtdir, self.srv_name)
-          except Exception as ex:
-            logging.exception('erorror read:{}'.format(ex))
+           self.read_from_client(ed, connections, requests, responses, fileno)
         elif event & select.EPOLLOUT:
-          try:
-            connection = connections[fileno]
-            resp = responses[fileno]
-            data = resp.read(1024)
-            nbytes = connection.send(data)
-            resp.seek(nbytes)
-            if resp.is_empty():
-              connection.shutdown(socket.SHUT_RDWR)
-              ed.unregister(fileno)
-              requests.pop(fileno, None)
-              responses.pop(fileno, None)
-              connection = connections.pop(fileno, None)
-              if connection:
-                  connection.close()
-          except Exception as ex:
-            logging.exception('err_write:{}'.format(ex))
+           self.write_to_client(ed, connections, requests, responses, fileno)
         elif event & select.EPOLLHUP:
-          try:
-            ed.unregister(fileno)
-            connections[fileno].close()
-            del connections[fileno]
-          except Exception as ex:
-            logging.exception('error close:{}'.format(ex))
+          self.close_client(ed, connections, fileno)
 
+  def accept_client(self, ed, connections, requests):
+    try:
+      connection, address = self.serversocket.accept()
+      connection.setblocking(0)
+      ed.register(connection.fileno(), select.EPOLLIN)
+      connections[connection.fileno()] = connection
+      requests[connection.fileno()] = HttpRequest()
+    except Exception as ex:
+            logging.error('err_accept:{}'.format(ex))
+
+  def read_from_client(self, ed, connections, requests, responses, fileno):
+     # handle input data
+     try:
+       data = connections[fileno].recv(1024)
+       req = requests[fileno]
+       req.add_data(data)
+       if req.is_ready:
+         ed.modify(fileno, select.EPOLLOUT)
+         responses[fileno] = HttpResponse(req, self.rtdir, self.srv_name)
+     except Exception as ex:
+       logging.exception('erorror read:{}'.format(ex))
+
+  def write_to_client(self, ed, connections, requests, responses, fileno):
+     try:
+       connection = connections[fileno]
+       resp = responses[fileno]
+       data = resp.read(1024)
+       nbytes = connection.send(data)
+       resp.seek(nbytes)
+       if resp.is_empty():
+         connection.shutdown(socket.SHUT_RDWR)
+         ed.unregister(fileno)
+         requests.pop(fileno, None)
+         responses.pop(fileno, None)
+         connection = connections.pop(fileno, None)
+         if connection:
+             connection.close()
+     except Exception as ex:
+       logging.exception('err_write:{}'.format(ex))
+
+  def close_client(self,ed, connections, fileno):
+     try:
+        ed.unregister(fileno)
+        connections[fileno].close()
+        del connections[fileno]
+     except Exception as ex:
+          logging.exception('error close:{}'.format(ex))
 
 def main():
   parser = argparse.ArgumentParser()
