@@ -42,9 +42,7 @@ class Resource(object):
       self.data = f.read()
     self.length = len(self.data)
 
-
 class HttpResponse(object):
-
   def __init__(self, req, root_directory, srv_name):
     self.data = None
     self.cur = 0

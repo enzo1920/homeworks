@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-
 class HttpRequest(object):
   def __init__(self):
     self.data = ''
@@ -10,7 +9,6 @@ class HttpRequest(object):
     self.headers = {}
     self.is_valid = None
     self.is_ready = False
-
 
   def add_data(self, data):
     self.data += data
