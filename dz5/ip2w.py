@@ -86,7 +86,6 @@ def get_weather(lat, lon):
   city = response['name']
   temp = float(response['main']['temp']) - 273.15
   conditions = response['weather'][0]['description']
-  print(city, temp, conditions)
   return {'city': city, 'temp': temp, 'conditions': conditions}
 
 def application(environ, start_response):
