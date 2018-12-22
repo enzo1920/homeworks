@@ -37,7 +37,6 @@ def read_config(path):
   config = dict(config["ip2w"])
   config["max_retries"] = int(config["max_retries"])
   config["timeout"] = float(config["timeout"])
-
   return config
 
 '''retry decorator'''
