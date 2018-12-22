@@ -41,16 +41,16 @@ def read_config(path):
 
 '''retry decorator'''
 def deco_retry(f,tries,delay):
-    @wraps(f)
-    def f_retry(*args, **kwargs):
-      mtries, mdelay = tries, delay
-      while mtries > 1:
-          try:
-            return f(*args, **kwargs)
-          except:
-            time.sleep(mdelay)
-            mtries -= 1
-            return f(*args, **kwargs)
+  @wraps(f)
+  def f_retry(*args, **kwargs):
+     mtries, mdelay = tries, delay
+     while mtries > 1:
+       try:
+         return f(*args, **kwargs)
+       except:
+         time.sleep(mdelay)
+         mtries -= 1
+         return f(*args, **kwargs)
     return f_retry
 
 def is_valid_ipv4_address(address):
