@@ -41,11 +41,11 @@ rm -rf %{buildroot}
 %{__mkdir} -p %{buildroot}%{__logdir}
 %{__mkdir} -p %{buildroot}%{__systemddir}
 %{__mkdir} -p %{buildroot}%{__nginx}
-%{__install} -pD -m 755 ip2w.py %{buildroot}%{__bindir}ip2w.py
-%{__install} -pD -m 644 ip2w.ini %{buildroot}%{__etcdir}ip2w.ini
-%{__install} -pD -m 644 secret.json %{buildroot}%{__etcdir}secret.json
-%{__install} -pD -m 644 ip2w.service %{buildroot}%{__systemddir}%{name}.service
-%{__install} -pD -m 644 nginx.conf %{buildroot}%{__nginx}%nginx.conf
+%{__install} -pD -m 755 /home/homeworks/dz5/ip2w.py %{buildroot}%{__bindir}ip2w.py
+%{__install} -pD -m 644 /home/homeworks/dz5/configs/ip2w.ini %{buildroot}%{__etcdir}ip2w.ini
+%{__install} -pD -m 644 /home/homeworks/dz5/secret.json %{buildroot}%{__etcdir}secret.json
+%{__install} -pD -m 644 /home/homeworks/dz5/service/ip2w.service %{buildroot}%{__systemddir}%{name}.service
+%{__install} -pD -m 644 /home/homeworks/dz5/configs/nginx.conf %{buildroot}%{__nginx}%nginx.conf
 
 %post
 %systemd_post %{name}.service
