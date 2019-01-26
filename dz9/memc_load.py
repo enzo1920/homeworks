@@ -39,8 +39,8 @@ def insert_appsinstalled(memc_addr, appsinstalled, dry_run=False):
         else:
             memc = memcache.Client([memc_addr])
             memc.set(key, packed)
-    except Exception, e:
-        logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
+    except Exception, ex:
+        logging.exception("Cannot write to memc %s: %s" % (memc_addr, ex))
         return False
     return True
 
