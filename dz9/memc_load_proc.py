@@ -5,12 +5,12 @@ import gzip
 import sys
 import gzip
 import glob
-import Queue
 import logging
 import datetime
+import argparse
 import threading
 import collections
-from optparse import OptionParser
+from multiprocessing import Queue as queue
 # brew install protobuf
 # protoc  --python_out=. ./appsinstalled.proto
 # pip install protobuf
@@ -18,7 +18,7 @@ from optparse import OptionParser
 # pip install python-memcached
 #import memcache
 
-NORMAL_ERR_RATE = 0.01
+#NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
 #Number of threads
 NUM_THREADS = 6
@@ -34,11 +34,13 @@ CONFIG = {
 
 class MemcacheClient(threading.Thread):
 
-    def __init__(self, addr):
+    def __init__(self, addr,timeout,tries):
         super(MemcacheClient, self).__init__()
         self.daemon = True
-        self.queue = Queue()
+        self.queue = queue()
         self.addr = addr
+        self.timeout = timeout
+        self.tries = tries
         self.errors = 0
 
     def set(self, msg):
@@ -48,13 +50,13 @@ class MemcacheClient(threading.Thread):
         self.queue.put(None)
 
     def run(self):
-        client = memcache.Client([self.addr],socket_timeout=CONFIG["SOCKET_TIMEOUT"])
+        client = memcache.Client([self.addr],socket_timeout=self.timeout)
         while True:
             msg = self.queue.get()
             if msg is None:
                 break
             ok = client.set(msg['key'], msg['data'])
-            for _ in xrange(3):
+            for _ in xrange(self.tries):
                 if ok:
                     break
                 ok = client.set(msg['key'], msg['data'])
@@ -64,22 +66,25 @@ class MemcacheClient(threading.Thread):
 
 
 class Worker(object):
-    def __init__(self, device_memc, dry, fname):
+    def __init__(self, device_memc, dry, fname,tries, norm_err_rate,sock_timeout):
         self.device_memc = device_memc
         self.dry = dry
         self.fname = fname
+        self.norm_err_rate = norm_err_rate
+        self.tries = tries
+        self.sock_timeout =sock_timeout
 
 
     def getName(self):
         return self.__class__.__name__
 
-    def process_file_grabber(self):
+    def starter(self):
         logging.info('Process {}  work with file').format(self.getName(),self.fname)
 
         processed = errors = 0
         memclients = {}
         for devtype, addr in self.devtype2addr.items():
-            mc = MemcacheClient(addr)
+            mc = MemcacheClient(addr,self.sock_timeout,self.tries)
             mc.start()
             memclients[devtype] = mc
 
@@ -113,11 +118,11 @@ class Worker(object):
             errors += mc.errors
 
         err_rate = float(errors) / processed
-#config!!!!
-        if err_rate < NORMAL_ERR_RATE:
+
+        if err_rate < self.norm_err_rate:
             logging.info("File {} acceptable error rate {}. Successfull load".format(fname, err_rate))
         else:
-            logging.error("File {}. err_rate is high {} > {}. Failed load".format(fname, err_rate, NORMAL_ERR_RATE))
+            logging.error("File {}. err_rate is high {} > {}. Failed load".format(fname, err_rate, self.norm_err_rate))
         return fname
 
 
@@ -148,31 +153,19 @@ class Worker(object):
             logging.info("Invalid geo coords: `%s`" % line)
         return AppsInstalled(dev_type, dev_id, lat, lon, apps)
 
-
 def dot_rename(path):
     head, fn = os.path.split(path)
     # atomic in most cases
     os.rename(path, os.path.join(head, "." + fn))
 
+def config_reader(config_dict):
+    config_tuple = namedtuple('config_tuple', ['tries', 'sock_timeout', 'norm_err_rate'])
+    config = config_tuple(config_dict["TRIES"], config_dict["SOCKET_TIMEOUT"],
+                              config_dict["NORMAL_ERR_RATE"])
+    return config
 
 
-'''
-    try:
-        if dry_run:
-            logging.debug("%s - %s -> %s" % (memc_addr, key, str(ua).replace("\n", " ")))
-        else:
-            memc = memcache.Client([memc_addr])
-            memc.set(key, packed)
-    except Exception, e:
-        logging.exception("Cannot write to memc %s: %s" % (memc_addr, e))
-        return False
-    return True
-'''
-
-
-
-
-def main(options):
+def main(options,config):
     device_memc = {
         "idfa": options.idfa,
         "gaid": options.gaid,
@@ -180,7 +173,13 @@ def main(options):
         "dvid": options.dvid,
     }
 
-
+    fnames = glob.glob(options.pattern)
+    fnames = sorted(fnames)
+    for fname in Pool(options.workers).imap(Worker(devtype2addr, options.dry, config.tries, config.err_rate,
+                                                   config.sock_timeout).starter(), fnames):
+        dot_rename(fname)
+        #head, fn = os.path.split(fname)
+        #os.rename(fname, os.path.join(head, "." + fn))
 
 
 
@@ -201,26 +200,28 @@ def prototest():
 
 
 if __name__ == '__main__':
-    op = OptionParser()
-    op.add_option("-t", "--test", action="store_true", default=False)
-    op.add_option("-l", "--log", action="store", default=None)
-    op.add_option("--dry", action="store_true", default=False)
-    #op.add_option("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
-    op.add_option("--pattern", action="store", default="/home/OTUS/homeworks/dz9/*.tsv.gz")
-    op.add_option("--idfa", action="store", default="127.0.0.1:33013")
-    op.add_option("--gaid", action="store", default="127.0.0.1:33014")
-    op.add_option("--adid", action="store", default="127.0.0.1:33015")
-    op.add_option("--dvid", action="store", default="127.0.0.1:33016")
-    (opts, args) = op.parse_args()
-    logging.basicConfig(filename=opts.log, level=logging.INFO if not opts.dry else logging.DEBUG,
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--test", action="store_true", default=False)
+    parser.add_argument("-l", "--log", action="store", default=None)
+    parser.add_argument("--dry", action="store_true", default=False)
+    parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
+    parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/*.tsv.gz")
+    parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")
+    parser.add_argument("--gaid", action="store", default="127.0.0.1:13306")
+    parser.add_argument("--adid", action="store", default="127.0.0.1:13307")
+    parser.add_argument("--dvid", action="store", default="127.0.0.1:13308")
+    args = parser.parse_args()
+    #(opts, args) = op.parse_args()
+    logging.basicConfig(filename=args.log, level=logging.INFO if not args.dry else logging.DEBUG,
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
+    cfg=config_reader(CONFIG)
     if opts.test:
         prototest()
         sys.exit(0)
 
     logging.info("Memc loader started with options: %s" % opts)
     try:
-        main(opts)
+        main(opts, cfg)
     except Exception, e:
         logging.exception("Unexpected error: %s" % e)
         sys.exit(1)
