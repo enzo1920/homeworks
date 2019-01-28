@@ -11,17 +11,16 @@ import argparse
 import threading
 import collections
 from multiprocessing import Queue as queue
+from multiprocessing import Pool, cpu_count
 # brew install protobuf
 # protoc  --python_out=. ./appsinstalled.proto
 # pip install protobuf
-#import appsinstalled_pb2
+import appsinstalled_pb2
 # pip install python-memcached
-#import memcache
+import memcache
 
 #NORMAL_ERR_RATE = 0.01
 AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "lat", "lon", "apps"])
-#Number of threads
-NUM_THREADS = 6
 
 
 CONFIG = {
@@ -34,10 +33,10 @@ CONFIG = {
 
 class MemcacheClient(threading.Thread):
 
-    def __init__(self, addr,timeout,tries):
+    def __init__(self, addr, timeout, tries):
         super(MemcacheClient, self).__init__()
         self.daemon = True
-        self.queue = queue()
+        self.queue = queue(64)
         self.addr = addr
         self.timeout = timeout
         self.tries = tries
@@ -50,74 +49,77 @@ class MemcacheClient(threading.Thread):
         self.queue.put(None)
 
     def run(self):
-        client = memcache.Client([self.addr],socket_timeout=self.timeout)
+        client = memcache.Client([self.addr], socket_timeout=self.timeout)
         while True:
             msg = self.queue.get()
+            #print(msg)
             if msg is None:
                 break
-            ok = client.set(msg['key'], msg['data'])
-            for _ in xrange(self.tries):
+            ok = client.set(msg['key'], msg['val'])
+            for _ in range(self.tries):
                 if ok:
                     break
-                ok = client.set(msg['key'], msg['data'])
+                ok = client.set(msg['key'], msg['val'])
             if not ok:
                 self.errors += 1
 
 
 
 class Worker(object):
-    def __init__(self, device_memc, dry, fname,tries, norm_err_rate,sock_timeout):
+    def __init__(self, device_memc, dry, tries, norm_err_rate, sock_timeout):
         self.device_memc = device_memc
         self.dry = dry
-        self.fname = fname
         self.norm_err_rate = norm_err_rate
         self.tries = tries
-        self.sock_timeout =sock_timeout
+        self.sock_timeout = sock_timeout
 
 
     def getName(self):
         return self.__class__.__name__
 
-    def starter(self):
-        logging.info('Process {}  work with file').format(self.getName(),self.fname)
-
+    def starter(self, fname):
+        logging.info('Process {}  work with file'.format(fname))
+        print('Process {}  work with file'.format(fname))
         processed = errors = 0
         memclients = {}
-        for devtype, addr in self.devtype2addr.items():
-            mc = MemcacheClient(addr,self.sock_timeout,self.tries)
+        for devtype, addr in self.device_memc.items():
+            mc = MemcacheClient(addr, self.sock_timeout, self.tries)
             mc.start()
             memclients[devtype] = mc
 
-        with gzip.open(fn) as fd:
-        for line in fd:
-            line = line.strip()
-            if not line:
-                continue
-                appsinstalled = self.parse_appsinstalled(self.fname, line)
-            if not appsinstalled:
-                errors += 1
-                continue
-            mc = memclients.get(appsinstalled.dev_type)
-            if not mc:
-                errors += 1
-                logging.error("{} unknow device type: {} in file {}".format(self.getName(),appsinstalled.dev_type, self.fname))
-                continue
-            chunk = self.memc_serialyzer(appsinstalled)
-            if chunk:
-                processed += 1
-            else:
-                errors += 1
-            if self.dry:
-                logging.debug("{} work with {}: {}".format (fname, str(chunk)))
-            else:
-                mc.set(chunk)
+        with gzip.open(fname,'rb') as fd:
+          for line in fd:
+              line = line.decode().strip()
+              if not line:
+                  continue
+              appsinstalled = self.parse_appsinstalled(line)
+              if not appsinstalled:
+                  errors += 1
+                  continue
+              mc = memclients.get(appsinstalled.dev_type)
+              if not mc:
+                  errors += 1
+                  logging.error(" unknow device type: {} in file {}".format(appsinstalled.dev_type, self.fname))
+                  continue
+              chunk = self.memc_serialyzer(appsinstalled)
+              if chunk:
+                  processed += 1
+              else:
+                  errors += 1
+              if self.dry:
+                  logging.debug("{} work with {}: {}".format (fname, str(chunk)))
+              else:
+                  mc.set(chunk)
 
-        for mc in memclients.values():
-            mc.try_to_stop()
-            mc.join()
-            errors += mc.errors
-
-        err_rate = float(errors) / processed
+          for mc in memclients.values():
+              mc.try_to_stop()
+              mc.join()
+              errors += mc.errors
+        if processed == 0:
+            logging.info(" wrong file {} ".format(fname))
+            err_rate = 0
+        else:
+            err_rate = float(errors) / processed
 
         if err_rate < self.norm_err_rate:
             logging.info("File {} acceptable error rate {}. Successfull load".format(fname, err_rate))
@@ -146,7 +148,7 @@ class Worker(object):
             apps = [int(a.strip()) for a in raw_apps.split(",")]
         except ValueError:
             apps = [int(a.strip()) for a in raw_apps.split(",") if a.isidigit()]
-            logging.info("Not all user apps are digits: `{}`") % line)
+            logging.info("Not all user apps are digits: `{}`".format(line))
         try:
             lat, lon = float(lat), float(lon)
         except ValueError:
@@ -159,24 +161,25 @@ def dot_rename(path):
     os.rename(path, os.path.join(head, "." + fn))
 
 def config_reader(config_dict):
-    config_tuple = namedtuple('config_tuple', ['tries', 'sock_timeout', 'norm_err_rate'])
+    config_tuple = collections.namedtuple('config_tuple', ['tries', 'sock_timeout', 'norm_err_rate'])
     config = config_tuple(config_dict["TRIES"], config_dict["SOCKET_TIMEOUT"],
                               config_dict["NORMAL_ERR_RATE"])
     return config
 
 
-def main(options,config):
+
+def main(options, config):
     device_memc = {
         "idfa": options.idfa,
         "gaid": options.gaid,
         "adid": options.adid,
         "dvid": options.dvid,
     }
-
+    print(config)
+    wc = Worker(device_memc, options.dry, config.tries, config.norm_err_rate, config.sock_timeout)
     fnames = glob.glob(options.pattern)
     fnames = sorted(fnames)
-    for fname in Pool(options.workers).imap(Worker(devtype2addr, options.dry, config.tries, config.err_rate,
-                                                   config.sock_timeout).starter(), fnames):
+    for fname in Pool(options.workers).imap(wc.starter, fnames):
         dot_rename(fname)
         #head, fn = os.path.split(fname)
         #os.rename(fname, os.path.join(head, "." + fn))
@@ -204,8 +207,9 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--test", action="store_true", default=False)
     parser.add_argument("-l", "--log", action="store", default=None)
     parser.add_argument("--dry", action="store_true", default=False)
-    parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
-    parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/*.tsv.gz")
+    parser.add_argument("--workers", action="store", default=3)
+    #parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
+    parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")
     parser.add_argument("--gaid", action="store", default="127.0.0.1:13306")
     parser.add_argument("--adid", action="store", default="127.0.0.1:13307")
@@ -214,14 +218,14 @@ if __name__ == '__main__':
     #(opts, args) = op.parse_args()
     logging.basicConfig(filename=args.log, level=logging.INFO if not args.dry else logging.DEBUG,
                         format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
-    cfg=config_reader(CONFIG)
-    if opts.test:
+    cfg = config_reader(CONFIG)
+    if args.test:
         prototest()
         sys.exit(0)
 
-    logging.info("Memc loader started with options: %s" % opts)
+    logging.info("Memc loader started with options: %s" % args)
     try:
-        main(opts, cfg)
-    except Exception, e:
+        main(args, cfg)
+    except Exception as e:
         logging.exception("Unexpected error: %s" % e)
         sys.exit(1)
