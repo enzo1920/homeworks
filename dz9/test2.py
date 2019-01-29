@@ -48,7 +48,7 @@ class MemcacheClient(Thread):
 class Worker(object):
 
     def __init__(self, devtype2addr):
-        self.addr = devtype2addr.get("idfa")
+        self.addr = devtype2addr.get("adid")
 
     def getName(self):
         return self.__class__.__name__
@@ -87,9 +87,9 @@ if __name__ == '__main__':
     op.add_option("--workers", action="store", type="int", default=2)
     op.add_option("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     op.add_option("--idfa", action="store", default="127.0.0.1:13305")
-    op.add_option("--gaid", action="store", default="127.0.0.1:33014")
-    op.add_option("--adid", action="store", default="127.0.0.1:33015")
-    op.add_option("--dvid", action="store", default="127.0.0.1:33016")
+    op.add_option("--gaid", action="store", default="127.0.0.1:13306")
+    op.add_option("--adid", action="store", default="127.0.0.1:13307")
+    op.add_option("--dvid", action="store", default="127.0.0.1:13308")
     (opts, args) = op.parse_args()
 
     print("Memc loader started with options: {}".format(opts))

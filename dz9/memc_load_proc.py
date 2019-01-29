@@ -25,7 +25,7 @@ AppsInstalled = collections.namedtuple("AppsInstalled", ["dev_type", "dev_id", "
 
 CONFIG = {
     "TRIES": 4,
-    "SOCKET_TIMEOUT": 2,
+    "SOCKET_TIMEOUT": 15,
     "NORMAL_ERR_RATE": 0.01,
 }
 
@@ -48,20 +48,30 @@ class MemcacheClient(threading.Thread):
     def try_to_stop(self):
         self.queue.put(None)
 
+
+
     def run(self):
+        #print(self.addr)
         client = memcache.Client([self.addr], socket_timeout=self.timeout)
         while True:
             msg = self.queue.get()
-            #print(msg)
+            print(msg)
             if msg is None:
                 break
             ok = client.set(msg['key'], msg['val'])
+            val = client.get(msg['key'])
+            print(str(val))
+            print(ok)
             for _ in range(self.tries):
                 if ok:
                     break
                 ok = client.set(msg['key'], msg['val'])
+                #####
+
+                ####
             if not ok:
                 self.errors += 1
+                logging.debug("mc not ok ")
 
 
 
@@ -79,7 +89,6 @@ class Worker(object):
 
     def starter(self, fname):
         logging.info('Process {}  work with file'.format(fname))
-        print('Process {}  work with file'.format(fname))
         processed = errors = 0
         memclients = {}
         for devtype, addr in self.device_memc.items():
@@ -95,19 +104,21 @@ class Worker(object):
               appsinstalled = self.parse_appsinstalled(line)
               if not appsinstalled:
                   errors += 1
+                  logging.error(" not appsinstalled: {} in file {}".format(line, fname))
                   continue
               mc = memclients.get(appsinstalled.dev_type)
               if not mc:
                   errors += 1
-                  logging.error(" unknow device type: {} in file {}".format(appsinstalled.dev_type, self.fname))
+                  logging.error(" unknow device type: {} in file {}".format(appsinstalled.dev_type, fname))
                   continue
               chunk = self.memc_serialyzer(appsinstalled)
               if chunk:
                   processed += 1
               else:
                   errors += 1
+                  logging.error(" memc_serialyzer: {} in file {}".format(line, fname))
               if self.dry:
-                  logging.debug("{} work with {}: {}".format (fname, str(chunk)))
+                  logging.debug("{} work with {}: {}".format(fname, str(chunk)))
               else:
                   mc.set(chunk)
 
@@ -119,6 +130,7 @@ class Worker(object):
             logging.info(" wrong file {} ".format(fname))
             err_rate = 0
         else:
+            #print(errors)
             err_rate = float(errors) / processed
 
         if err_rate < self.norm_err_rate:
@@ -180,7 +192,8 @@ def main(options, config):
     fnames = glob.glob(options.pattern)
     fnames = sorted(fnames)
     for fname in Pool(options.workers).imap(wc.starter, fnames):
-        dot_rename(fname)
+        #dot_rename(fname)
+        print(fname)
         #head, fn = os.path.split(fname)
         #os.rename(fname, os.path.join(head, "." + fn))
 
@@ -205,9 +218,9 @@ def prototest():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--test", action="store_true", default=False)
-    parser.add_argument("-l", "--log", action="store", default=None)
+    parser.add_argument("-l", "--log", action="store", default="memc_proc.log")
     parser.add_argument("--dry", action="store_true", default=False)
-    parser.add_argument("--workers", action="store", default=3)
+    parser.add_argument("--workers", action="store", default=2)
     #parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
     parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")
