@@ -91,8 +91,10 @@ class Worker(object):
         memclients = {}
         for devtype, addr in self.device_memc.items():
             mc = MemcacheClient(addr, self.sock_timeout, self.tries)
+            mc.setName(str(devtype))
             mc.start()
             memclients[devtype] = mc
+            logging.info('Proc is {} mmc_thread {} '.format(str(os.getpid()),str(mc.getName())))
         try:
             with self.openfile(fname) as fd:
                 for line in fd:
@@ -215,7 +217,8 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--log", action="store", default="memc_proc.log")
     parser.add_argument("--dry", action="store_true", default=False)
     parser.add_argument("--workers", action="store", default=2)
-    parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
+    #parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
+    parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")
     parser.add_argument("--gaid", action="store", default="127.0.0.1:13306")
     parser.add_argument("--adid", action="store", default="127.0.0.1:13307")
