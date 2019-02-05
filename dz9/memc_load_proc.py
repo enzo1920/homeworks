@@ -133,9 +133,7 @@ class Worker(object):
                         if len(dict_dev_type) == self.buffer_portion:
                             mc.set(dict_dev_type)
                             dict_dev_type.clear()
-
-
-
+                            
                 for mc in memclients.values():
                     mc.try_to_stop()
                     mc.join()
