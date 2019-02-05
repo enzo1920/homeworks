@@ -121,7 +121,6 @@ class Worker(object):
                         logging.error(" unknow device type: {} in file {}".format(appsinstalled.dev_type, fname))
                         continue
                     key, packed = self.memc_serialyzer(appsinstalled)
-
                     if key:
                         processed += 1
                         dict_dev_type[key]=packed
@@ -131,7 +130,6 @@ class Worker(object):
                     if self.dry:
                         logging.debug("{} work with {}: {}".format(fname, str(chunk)))
                     else:
-                        #mc.set(chunk)
                         if len(dict_dev_type) == self.buffer_portion:
                             mc.set(dict_dev_type)
                             dict_dev_type.clear()
