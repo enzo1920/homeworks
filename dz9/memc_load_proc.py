@@ -35,7 +35,7 @@ class MemcacheClient(threading.Thread):
     def __init__(self, addr, timeout, tries):
         super(MemcacheClient, self).__init__()
         self.daemon = True
-        self.queue = queue(42)
+        self.queue = queue()
         self.addr = addr
         self.timeout = timeout
         self.tries = tries
@@ -58,14 +58,15 @@ class MemcacheClient(threading.Thread):
             if msg is None:
                 break
             try:
-                ok = self.client.set_multi(msg)
+                #return: List of keys which failed to be stored
+                ret_list = self.client.set_multi(msg)
                 for _ in range(self.tries):
-                    if ok:
+                    if not ret_list:
                         break
-                    ok = self.client.set_multi(msg)
-                if not ok:
+                    ret_list = self.client.set_multi(msg)
+                if ret_list:
                     self.errors += 1
-                    logging.debug("client insert err, not ok ")
+                    logging.error("client insert err, not ok ")
             except Exception as ex:
                 logging.error("Error: {} . memc set".format(str(ex)))
 
@@ -123,7 +124,7 @@ class Worker(object):
                     key, packed = self.memc_serialyzer(appsinstalled)
                     if key:
                         processed += 1
-                        dict_dev_type[key]=packed
+                        dict_dev_type[key] = packed
                     else:
                         errors += 1
                         logging.error(" memc_serialyzer: {} in file {}".format(line, fname))
@@ -133,7 +134,7 @@ class Worker(object):
                         if len(dict_dev_type) == self.buffer_portion:
                             mc.set(dict_dev_type)
                             dict_dev_type.clear()
-                            
+
                 for mc in memclients.values():
                     mc.try_to_stop()
                     mc.join()
