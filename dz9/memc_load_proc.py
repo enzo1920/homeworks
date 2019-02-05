@@ -6,10 +6,12 @@ import sys
 import gzip
 import glob
 import logging
+import time
 import datetime
 import argparse
 import threading
 import collections
+from itertools import chain
 from multiprocessing import Queue as queue
 from multiprocessing import Pool, cpu_count
 # brew install protobuf
@@ -56,11 +58,11 @@ class MemcacheClient(threading.Thread):
             if msg is None:
                 break
             try:
-                ok = self.client.set(msg['key'], msg['val'])
+                ok = self.client.set_multi(msg)
                 for _ in range(self.tries):
                     if ok:
                         break
-                    ok = self.client.set(msg['key'], msg['val'])
+                    ok = self.client.set_multi(msg)
                 if not ok:
                     self.errors += 1
                     logging.debug("client insert err, not ok ")
@@ -69,11 +71,12 @@ class MemcacheClient(threading.Thread):
 
 
 class Worker(object):
-    def __init__(self, device_memc, dry, tries, norm_err_rate, sock_timeout):
+    def __init__(self, device_memc, dry, tries, norm_err_rate, sock_timeout, buffer_portion):
         self.device_memc = device_memc
         self.dry = dry
         self.norm_err_rate = norm_err_rate
         self.tries = tries
+        self.buffer_portion = buffer_portion
         self.sock_timeout = sock_timeout
 
     def openfile(self, filename):
@@ -88,13 +91,18 @@ class Worker(object):
 
         logging.info('Process {}  work with file'.format(fname))
         processed = errors = 0
+        buffer = {}
         memclients = {}
         for devtype, addr in self.device_memc.items():
             mc = MemcacheClient(addr, self.sock_timeout, self.tries)
             mc.setName(str(devtype))
             mc.start()
             memclients[devtype] = mc
-            logging.info('Proc is {} mmc_thread {} '.format(str(os.getpid()),str(mc.getName())))
+            dict_dev = devtype
+            dict_dev = {}
+            buffer[devtype] = dict_dev
+
+            logging.info('Proc is {} mmc_thread {} '.format(str(os.getpid()), str(mc.getName())))
         try:
             with self.openfile(fname) as fd:
                 for line in fd:
@@ -107,20 +115,28 @@ class Worker(object):
                         logging.error(" not appsinstalled: {} in file {}".format(line, fname))
                         continue
                     mc = memclients.get(appsinstalled.dev_type)
+                    dict_dev_type = buffer.get(appsinstalled.dev_type)
                     if not mc:
                         errors += 1
                         logging.error(" unknow device type: {} in file {}".format(appsinstalled.dev_type, fname))
                         continue
-                    chunk = self.memc_serialyzer(appsinstalled)
-                    if chunk:
+                    key, packed = self.memc_serialyzer(appsinstalled)
+
+                    if key:
                         processed += 1
+                        dict_dev_type[key]=packed
                     else:
                         errors += 1
                         logging.error(" memc_serialyzer: {} in file {}".format(line, fname))
                     if self.dry:
                         logging.debug("{} work with {}: {}".format(fname, str(chunk)))
                     else:
-                        mc.set(chunk)
+                        #mc.set(chunk)
+                        if len(dict_dev_type) == self.buffer_portion:
+                            mc.set(dict_dev_type)
+                            dict_dev_type.clear()
+
+
 
                 for mc in memclients.values():
                     mc.try_to_stop()
@@ -147,7 +163,7 @@ class Worker(object):
         key = "{}:{}".format(appsinstalled.dev_type, appsinstalled.dev_id)
         ua.apps.extend(appsinstalled.apps)
         packed = ua.SerializeToString()
-        return {'key': key, 'val': packed}
+        return  key, packed
 
     def parse_appsinstalled(self, line):
         line_parts = line.strip().split("\t")
@@ -188,7 +204,7 @@ def main(options, config):
         "adid": options.adid,
         "dvid": options.dvid,
     }
-    wc = Worker(device_memc, options.dry, config.tries, config.norm_err_rate, config.sock_timeout)
+    wc = Worker(device_memc, options.dry, config.tries, config.norm_err_rate, config.sock_timeout, options.buffer_portion)
     fnames = glob.glob(options.pattern)
     fnames = sorted(fnames)
     for fname in Pool(options.workers).imap(wc.starter, fnames):
@@ -217,6 +233,7 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--log", action="store", default="memc_proc.log")
     parser.add_argument("--dry", action="store_true", default=False)
     parser.add_argument("--workers", action="store", default=2)
+    parser.add_argument("-b", "--buffer_portion", action="store", default=10)
     #parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
     parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")

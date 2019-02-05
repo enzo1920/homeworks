@@ -7,9 +7,11 @@
 # http://www.opensource.org/licenses/mit-license
 # Copyright (c) 2016 Mehmet Kose mehmet@linux.com
 
-
+import re
 import aiohttp
 import asyncio
+import urllib
+from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urldefrag
 
 root_url = "http://news.ycombinator.com"
@@ -24,6 +26,13 @@ def remove_fragment(url):
     pure_url, frag = urldefrag(url)
     #print(pure_url)
     return pure_url
+
+def html_parser():
+    html_page = urllib.request.urlopen("http://news.ycombinator.com")
+    soup = BeautifulSoup(html_page)
+    for link in soup.findAll('a'):
+        print(link.get('href'))
+
 
 def get_links(html):
     new_urls = [link.split('"')[0] for link in str(html).replace("'",'"').split('href="')[1:]]
@@ -41,3 +50,4 @@ if __name__ == '__main__':
             crawled_urls.append(link)
             print("url  crawled: %s  " %  link)
     client.close()
+    #html_parser()
