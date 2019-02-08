@@ -230,7 +230,7 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--log", action="store", default="memc_proc.log")
     parser.add_argument("--dry", action="store_true", default=False)
     parser.add_argument("--workers", action="store", default=2)
-    parser.add_argument("-b", "--buffer_portion", action="store", default=10)
+    parser.add_argument("-b", "--flush_threshold", action="store", default=10)
     #parser.add_argument("--pattern", action="store", default="/data/appsinstalled/*.tsv.gz")
     parser.add_argument("--pattern", action="store", default="/home/OTUS/homeworks/dz9/tsv/*.tsv.gz")
     parser.add_argument("--idfa", action="store", default="127.0.0.1:13305")

@@ -27,27 +27,49 @@ def remove_fragment(url):
     #print(pure_url)
     return pure_url
 
-def html_parser():
-    html_page = urllib.request.urlopen("http://news.ycombinator.com")
+def html_parser(html_page):
     soup = BeautifulSoup(html_page)
-    for link in soup.findAll('a'):
-        print(link.get('href'))
+    for a in soup.find_all('a', href=True):
+        print("Found the URL:", a['href'])
+
+def parse_main_page(html):
+    """
+    Parse articles urls and their ids
+    """
+    posts = {}
+
+    soup = BeautifulSoup(html, "html5lib")
+    trs = soup.select("table.itemlist tr.athing")
+    for ind, tr in enumerate(trs):
+        id, url = "", ""
+        try:
+            id = int(tr.attrs["id"])
+            url = tr.select_one("td.title a.storylink").attrs["href"]
+            posts[id] = url
+        except KeyError:
+            log.error("Error on {} post (id: {}, url: {})".format(
+                ind, id, url
+            ))
+            continue
+
+    print(posts)
+
 
 
 def get_links(html):
     new_urls = [link.split('"')[0] for link in str(html).replace("'",'"').split('href="')[1:]]
-    print(new_urls)
     return [urljoin(root_url, remove_fragment(new_url)) for new_url in new_urls]
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     client = aiohttp.ClientSession(loop=loop)
     raw_html = loop.run_until_complete(get_body(client, root_url))
-    for link in get_links(raw_html):
+    #html_parser(raw_html)
+    parse_main_page(raw_html)
+    '''for link in get_links(raw_html):
         if root_url in link and not link in crawled_urls:
             #url_hub.append(link)
-    #url_hub.remove(to_crawl)
-            crawled_urls.append(link)
-            print("url  crawled: %s  " %  link)
+            #crawled_urls.append(link)
+            print("url  crawled: %s  " %  link)'''
     client.close()
     #html_parser()
