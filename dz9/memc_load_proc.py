@@ -201,7 +201,7 @@ def main(options, config):
         "adid": options.adid,
         "dvid": options.dvid,
     }
-    wc = Worker(device_memc, options.dry, config.tries, config.norm_err_rate, config.sock_timeout, options.buffer_portion)
+    wc = Worker(device_memc, options.dry, config.tries, config.norm_err_rate, config.sock_timeout, options.flush_threshold)
     fnames = glob.glob(options.pattern)
     fnames = sorted(fnames)
     for fname in Pool(options.workers).imap(wc.starter, fnames):
