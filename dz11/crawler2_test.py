@@ -10,6 +10,7 @@ import asyncio
 import logging
 import hashlib
 import argparse
+import functools
 import subprocess
 from bs4 import BeautifulSoup
 #from urllib.parse import urljoin, urldefrag
@@ -21,12 +22,14 @@ WAIT_AFTER_RETRY=2
 
 class Storekeeper:
 
-    def __init__(self, store_dir):
+    def __init__(self, store_dir,loop):
         self.__posts_saved = 0
         self.__comments_links_saved = 0
         self.store_dir = store_dir
+        self.loop =  loop
 
     def create_dirs(self, path):
+        print(path)
         dirpath = os.path.dirname(path)
         os.makedirs(dirpath, exist_ok=True)
 
@@ -34,7 +37,12 @@ class Storekeeper:
         pass
 
     def get_path(self, link_id, post_id):
-        pass
+        if link_id > 0:
+            filename = "{}_{}.html".format(post_id, link_id)
+        else:
+            filename = "{}.html".format(post_id)
+        filepath = os.path.join(self.store_dir, str(post_id), filename)
+        return filepath
 
     def get_created_dirs(self):
         self.create_dirs(self.store_dir)
@@ -54,24 +62,40 @@ class Storekeeper:
         hash_url = hashlib.md5(url.encode())
         return hash_url.hexdigest().join('.pdf')
 
-
-    async def write_to_pdf(self, path, url):
-         '''save url to pdf using wkhtmltopdf'''
+    async def save_to_pdf(self, path, url):
+        print('save to pdf running')
+        fname = filename_from_url_gen(url)
+        fname = path.join(fname)
+        #if link is pdf
+        cmd_done = asyncio.Future(loop=self.loop)
+        factory = functools.partial(DFProtocol, cmd_done)
+        proc = self.loop.subprocess_exec(
+            factory,
+             "wkhtmltopdf {} {}".format(url, fname),
+            stdin=None,
+            stderr=None,
+        )
         try:
-            '''shoot into my leg )))'''
-            '''if pdf ?)))) add check to pdf'''
+            print('launching process save to pdf')
+            transport, protocol = await proc
+            print('waiting for process save to pdf to complete')
+            await cmd_done
+        finally:
+            transport.close()
+
+        return cmd_done.result()
+
+    def write_to_file(self, path, content):
+        """
+        Save binary content to file
+        """
+        try:
             self.create_dirs(path)
-            fname = filename_from_url_gen(url)
-            writepdf_command = "wkhtmltopdf {} {}".format(url, fname)
-            proc_write_pdf = subprocess.Popen(some_command, stdout=subprocess.PIPE, shell=True)
-            output, err = proc_write_pdf.communicate()
-            p_status = proc_write_pdf.wait()
-
+            with open(path, "wb") as f:
+                f.write(content)
         except OSError as ex:
-            log.error("Can't save file {}. {}: {}".format(path, type(ex).__name__, ex.args
-            ))
+            logging.error("Can't save file {}. {}: {}".format(path, type(ex).__name__, ex.args))
             return
-
 
     async def get_body(self, url):
         try:
@@ -93,6 +117,11 @@ class Storekeeper:
             log.debug("Fetched and saved link {} for post {}: {}".format(link_id, post_id, url))
         except aiohttp.ClientError:
             pass
+
+
+
+
+
 
 
 
@@ -136,7 +165,7 @@ def parse_main_page(html):
     return posts
 
 
-async def crawl_urls_worker(w_id, storekeeper, queue):
+async def worker_crawl_url(w_id, storekeeper, queue):
 
     while True:
         post_and_url = await queue.get()
@@ -146,20 +175,47 @@ async def crawl_urls_worker(w_id, storekeeper, queue):
         else:
             post_id, url = post_and_url
 
-        ready_post_ids = storekeeper.get_dir_names()
+        ready_post_ids = storekeeper.get_created_dirs()
         if post_id in ready_post_ids:
             log.debug("Post {} already saved".format(post_id))
             continue
 
-        comments_links = await get_links_from_comments(post_id, fetcher)
-        links = [url] + comments_links
-        logging.debug("Worker {} - found {} links in post {}".format(w_id, len(links), post_id))
+        #comments_links = await get_links_from_comments(post_id, fetcher)
+        #links = [url] + comments_links
+        #logging.debug("Worker {} - found {} links in post {}".format(w_id, len(links), post_id))
 
-        tasks = [
-            storekeeper.load_and_save(link, post_id, ind) for ind, link in enumerate(links)
-        ]
+        #tasks = [
+        #    storekeeper.load_and_save(link, post_id, ind) for ind, link in enumerate(links)
+       # ]
 
-        await asyncio.gather(*tasks)
+        #await asyncio.gather(*tasks)
+
+async def monitor_ycombinator(storekeeper, queue):
+    """
+    Periodically check news.ycombinator.com for new articles.
+    Parse articles and links from comments and save to local files
+    """
+
+    iteration = 1
+    while True:
+        logging.info("Start crawl: {} iteration".format(iteration))
+
+        try:
+            await check_main_page(storekeeper, queue)
+        except Exception:
+            logging.exception("Unrecognized error -> close all workers and exit")
+            for _ in range(num_workers):
+                await queue.put(None)
+            return
+        iteration += 1
+'''
+        posts_saved = await fetcher.posts_saved
+        comments_links_saved = await fetcher.comments_links_saved
+        log.info("Saved {} posts, {} links from comments".format(
+            posts_saved, comments_links_saved
+        ))
+        log.info("Waiting for {} sec...".format(to_sleep))
+        await asyncio.sleep(to_sleep)'''
 
 
 
@@ -167,14 +223,21 @@ async def crawl_urls_worker(w_id, storekeeper, queue):
 
 
 def main(args):
-
     loop = asyncio.get_event_loop()
-    #client = aiohttp.ClientSession(loop=loop)
-    #raw_html = loop.run_until_complete(get_body(client,YCOMB_URL))
-    storekeeper =Storekeeper(args.storedir)
-    loop.run_until_complete(get_body(client, YCOMB_URL))
-    #parse_main_page(raw_html)
-    #client.close()
+    storekeeper = Storekeeper(args.storedir, loop)
+    queue = asyncio.Queue(loop=loop)
+    loop.run_until_complete(monitor_ycombinator(storekeeper, queue))
+    '''workers = [
+        worker_crawl_url(i, storekeeper, queue)
+        for i in range(3)
+    ]
+
+    loop.run_until_complete(asyncio.gather(*workers))'''
+    loop.close()
+    #loop = asyncio.get_event_loop()
+    #storekeeper =Storekeeper(args.storedir,loop)
+    #loop.run_until_complete(get_body(client, YCOMB_URL))
+
 
 
 if __name__ == '__main__':
