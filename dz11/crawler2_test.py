@@ -1,4 +1,4 @@
-#!/usr/bin/python3.5
+#!/usr/bin/python3.6
 
 
 import re
@@ -12,13 +12,16 @@ import hashlib
 import argparse
 import functools
 import subprocess
+import collections
 from bs4 import BeautifulSoup
-#from urllib.parse import urljoin, urldefrag
+from urllib.parse import urlparse
 
 YCOMB_URL = "https://news.ycombinator.com/"
 YCOMB_TEMPLATE = "https://news.ycombinator.com/item?id={id}"
 RETRY = 3
 WAIT_AFTER_RETRY=2
+
+FileExtentions = collections.namedtuple("FileExtentions", ["jpeg", "png", "pdf", "lon", "apps"])
 
 class Storekeeper:
 
@@ -29,20 +32,24 @@ class Storekeeper:
         self.loop =  loop
 
     def create_dirs(self, path):
-        print(path)
         dirpath = os.path.dirname(path)
         os.makedirs(dirpath, exist_ok=True)
 
     def get_and_store(self, html):
         pass
 
-    def get_path(self, link_id, post_id):
+    def get_path(self, link_id, post_id, url):
+        file_ext = "html"
+        if str(url).endswith("pdf"):
+            file_ext="pdf"
+
         if link_id > 0:
-            filename = "{}_{}.html".format(post_id, link_id)
+            filename = "{}_{}.{}".format(post_id, link_id,file_ext)
         else:
-            filename = "{}.html".format(post_id)
+            filename = "{}.{}".format(post_id,file_ext)
         filepath = os.path.join(self.store_dir, str(post_id), filename)
         return filepath
+
 
     def get_created_dirs(self):
         self.create_dirs(self.store_dir)
@@ -57,33 +64,6 @@ class Storekeeper:
 
         return post_ids
 
-
-    def filename_from_url_gen(self, url):
-        hash_url = hashlib.md5(url.encode())
-        return hash_url.hexdigest().join('.pdf')
-
-    async def save_to_pdf(self, path, url):
-        print('save to pdf running')
-        fname = filename_from_url_gen(url)
-        fname = path.join(fname)
-        #if link is pdf
-        cmd_done = asyncio.Future(loop=self.loop)
-        factory = functools.partial(DFProtocol, cmd_done)
-        proc = self.loop.subprocess_exec(
-            factory,
-             "wkhtmltopdf {} {}".format(url, fname),
-            stdin=None,
-            stderr=None,
-        )
-        try:
-            print('launching process save to pdf')
-            transport, protocol = await proc
-            print('waiting for process save to pdf to complete')
-            await cmd_done
-        finally:
-            transport.close()
-
-        return cmd_done.result()
 
     def write_to_file(self, path, content):
         """
@@ -112,29 +92,65 @@ class Storekeeper:
         """
         try:
             content = await self.get_body(url)
-            filepath = self.get_path(link_id, post_id)
+            #filepath = os.path.join(self.store_dir, str(post_id))
+            filepath = self.get_path(link_id, post_id, url)
             self.write_to_file(filepath, content)
-            log.debug("Fetched and saved link {} for post {}: {}".format(link_id, post_id, url))
-        except aiohttp.ClientError:
-            pass
+            #logging.debug("Fetched and saved link {} for post {}: {}".format(link_id, post_id, url))
+        except Exception as ex:
+            logging.error("save err: {}".format(str(ex)))
+
+
+    async def pdf_converter(self, url, post_id, link_id):
+        """Run command in subprocess (shell)"""
+        try:
+            filepath = self.get_path(link_id, post_id, url)
+            self.create_dirs(filepath)
+            command = "xvfb-run wkhtmltopdf '{}', {}".format(url,filepath.replace('html','pdf'))
+            # Create subprocess
+            process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
+            print('Started:', command, '(pid = ' + str(process.pid) + ')')
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                print('Done:', command, '(pid = ' + str(process.pid) + ')')
+            else:
+                print('Failed:', command, '(pid = ' + str(process.pid) + ')')
+            result = stdout.decode().strip()
+            print(result)
+            return result
+        except Exception as ex:
+            logging.error("save err: {}".format(str(ex)))
 
 
 
 
 
+async def get_links_from_comments(post_id, storekeeper):
+    """
+    Fetch comments page and parse links from comments
+    """
+    url = YCOMB_TEMPLATE.format(id=post_id)
+    links = set()
+    try:
+        html = await storekeeper.get_body(url)
+        soup = BeautifulSoup(html, "html5lib")
+        for link in soup.select(".comment a[rel=nofollow]"):
+            _url = link.attrs["href"]
+            parsed_url = urlparse(_url)
+            if parsed_url.scheme and parsed_url.netloc:
+                print(_url)
+                links.add(_url)
 
-
-
-def get_links_from_comments(post_id):
-    #comments  and parse links from comments
-    url = YCOMB_POST_URL_TEMPLATE.format(id=post_id)
-    print(url)
+        return list(links)
+    except aiohttp.ClientError:
+        return list(links)
 
 
 
 async def check_main_page(storekeeper, queue):
     html = await storekeeper.get_body(YCOMB_URL)
-
+    #logging.info(html)
     posts = parse_main_page(html)
     ready_post_ids = storekeeper.get_created_dirs()
 
@@ -165,32 +181,37 @@ def parse_main_page(html):
     return posts
 
 
-async def worker_crawl_url(w_id, storekeeper, queue):
+async def crawler(storekeeper, queue):
 
     while True:
         post_and_url = await queue.get()
         if post_and_url == None:
-            logging.info("Worker {} got None exit".format(w_id))
+            logging.info("Worker got None exit")
             return
         else:
             post_id, url = post_and_url
-
+        #print(post_and_url)
         ready_post_ids = storekeeper.get_created_dirs()
         if post_id in ready_post_ids:
-            log.debug("Post {} already saved".format(post_id))
+            logging.debug("Post {} already saved".format(post_id))
             continue
 
-        #comments_links = await get_links_from_comments(post_id, fetcher)
-        #links = [url] + comments_links
+        comments_links = await get_links_from_comments(post_id, storekeeper)
+        links = [url] + comments_links
+        print(links)
         #logging.debug("Worker {} - found {} links in post {}".format(w_id, len(links), post_id))
 
-        #tasks = [
-        #    storekeeper.load_and_save(link, post_id, ind) for ind, link in enumerate(links)
-       # ]
+        converter_tasks = [
+            storekeeper.pdf_converter(link, post_id, ind) for ind, link in enumerate(links)
+        ]
+        await asyncio.gather(*converter_tasks)
+        '''tasks = [
+            storekeeper.load_and_save(link, post_id, ind) for ind, link in enumerate(links)
+        ]
 
-        #await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)'''
 
-async def monitor_ycombinator(storekeeper, queue):
+async def monitor(storekeeper, queue):
     """
     Periodically check news.ycombinator.com for new articles.
     Parse articles and links from comments and save to local files
@@ -204,8 +225,8 @@ async def monitor_ycombinator(storekeeper, queue):
             await check_main_page(storekeeper, queue)
         except Exception:
             logging.exception("Unrecognized error -> close all workers and exit")
-            for _ in range(num_workers):
-                await queue.put(None)
+            #for _ in range(num_workers):
+            await queue.put(None)
             return
         iteration += 1
 '''
@@ -226,7 +247,14 @@ def main(args):
     loop = asyncio.get_event_loop()
     storekeeper = Storekeeper(args.storedir, loop)
     queue = asyncio.Queue(loop=loop)
-    loop.run_until_complete(monitor_ycombinator(storekeeper, queue))
+
+    workers = [crawler(storekeeper, queue)]
+    workers.append(monitor(storekeeper, queue))
+
+    loop.run_until_complete(asyncio.gather(*workers))
+    loop.close()
+
+    #loop.run_until_complete(monitor_ycombinator(storekeeper, queue))
     '''workers = [
         worker_crawl_url(i, storekeeper, queue)
         for i in range(3)
