@@ -105,7 +105,7 @@ class Storekeeper:
         try:
             filepath = self.get_path(link_id, post_id, url)
             self.create_dirs(filepath)
-            command = "xvfb-run wkhtmltopdf '{}', {}".format(url,filepath.replace('html','pdf'))
+            command = "wkhtmltopdf '{}' {}".format(url,filepath.replace('html','pdf'))
             # Create subprocess
             process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
             print('Started:', command, '(pid = ' + str(process.pid) + ')')
@@ -117,8 +117,8 @@ class Storekeeper:
             else:
                 print('Failed:', command, '(pid = ' + str(process.pid) + ')')
             result = stdout.decode().strip()
-            print(result)
-            return result
+            #print(result)
+            #return result
         except Exception as ex:
             logging.error("save err: {}".format(str(ex)))
 
