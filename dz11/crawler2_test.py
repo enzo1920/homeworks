@@ -1,48 +1,103 @@
 #!/usr/bin/python3.6
+#coding: utf-8
 
-
-import re
 import os
 import sys
-import urllib
 import aiohttp
 import asyncio
 import logging
-import hashlib
 import argparse
-import functools
-import subprocess
-import collections
+import mimetypes
+from email import encoders
+from smtplib import SMTP_SSL as SMTP
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+
+from email.mime.multipart import MIMEMultipart
+from email import encoders
+from email.message import Message
+from email.mime.audio import MIMEAudio
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email.mime.text import MIMEText
+from email.header import Header
 
 YCOMB_URL = "https://news.ycombinator.com/"
 YCOMB_TEMPLATE = "https://news.ycombinator.com/item?id={id}"
 RETRY = 3
-WAIT_AFTER_RETRY=2
+WAIT_AFTER_RETRY=20
 
-FileExtentions = collections.namedtuple("FileExtentions", ["jpeg", "png", "pdf", "lon", "apps"])
+FILTERS=['arduino','raspberrypi','camera','streaming','diy','girls','farm','robots','sql','huawei']
+SMTP_DICT = {"server":"smtp.yandex.ru:465","mail_from":"carlcrawl@yandex.ru","mail_pass":"wrxsti14", "mail_destination":"enzo1920@ya.ru", "timeout_smtp":"20"}
 
-class Storekeeper:
 
-    def __init__(self, store_dir,loop):
+class MailWorker(object):
+    def __init__(self, smtp_cfg_dict):
+        self.smtp_server = smtp_cfg_dict['server']
+        self.mail_from = smtp_cfg_dict['mail_from']
+        self.mail_pass = smtp_cfg_dict['mail_pass']
+        self.mail_destination = smtp_cfg_dict['mail_destination']
+        self.timeout = smtp_cfg_dict['timeout_smtp']
+
+
+    def attach_send(self, subject,file_to_send):
+        server =self.smtp_server
+        msg = MIMEMultipart()
+        msg['From'] = self.mailbox_from
+        msg['To'] = self.mail_destination
+        msg['Subject'] = subject
+
+        ctype, encoding = mimetypes.guess_type(self.filepath)
+        if ctype is None or encoding is not None:
+           ctype = 'application/octet-stream'
+        maintype, subtype = ctype.split("/", 1)
+        if maintype == "text":
+           with open(file_to_send) as fsend:
+               attachment = MIMEText(fsend.read(), _subtype=subtype)
+        elif maintype == "image":
+            with open(file_to_send, "rb") as fsend:
+               attachment = MIMEImage(fsend.read(), _subtype=subtype)
+        elif maintype == "audio":
+            with open(file_to_send, "rb") as fsend:
+               attachment = MIMEAudio(fsend.read(), _subtype=subtype)
+        else:
+            with open(file_to_send, "rb") as fsend:
+               attachment = MIMEBase(maintype, subtype)
+               attachment.set_payload(fsend.read())
+
+        encoders.encode_base64(attachment)
+        attachment.add_header("Content-Disposition", "attachment", filename=os.path.basename(file_to_send))
+        msg.attach(attachment)
+
+        try:
+            conn = SMTP(server,timeout=int(self.timeout))
+            conn.set_debuglevel(False)
+            conn.login(self.mail_from, self.mail_pass)
+            try:
+                conn.sendmail('{}<{}>'.format('crawler',self.mail_from),self.mail_destination, msg.as_string())
+            finally:
+                conn.quit()
+        except Exception as exc:
+                logging.error("Error sent email ".format(str(exc)))
+
+
+
+
+class Storekeeper(MailWorker):
+
+    def __init__(self, store_dir,loop,smtp_dict):
         self.__posts_saved = 0
         self.__comments_links_saved = 0
         self.store_dir = store_dir
         self.loop =  loop
+        super().__init__(smtp_dict)
 
     def create_dirs(self, path):
         dirpath = os.path.dirname(path)
         os.makedirs(dirpath, exist_ok=True)
 
-    def get_and_store(self, html):
-        pass
-
     def get_path(self, link_id, post_id, url):
-        file_ext = "html"
-        if str(url).endswith("pdf"):
-            file_ext="pdf"
-
+        file_ext = "pdf"
         if link_id > 0:
             filename = "{}_{}.{}".format(post_id, link_id,file_ext)
         else:
@@ -65,18 +120,6 @@ class Storekeeper:
         return post_ids
 
 
-    def write_to_file(self, path, content):
-        """
-        Save binary content to file
-        """
-        try:
-            self.create_dirs(path)
-            with open(path, "wb") as f:
-                f.write(content)
-        except OSError as ex:
-            logging.error("Can't save file {}. {}: {}".format(path, type(ex).__name__, ex.args))
-            return
-
     async def get_body(self, url):
         try:
             async with aiohttp.ClientSession() as session:
@@ -86,44 +129,27 @@ class Storekeeper:
             logging.error("aiohttp can't read response: %s" % ex)
 
 
-    async def load_and_save(self, url, post_id, link_id):
-        """
-        Fetch url and save content to file
-        """
-        try:
-            content = await self.get_body(url)
-            #filepath = os.path.join(self.store_dir, str(post_id))
-            filepath = self.get_path(link_id, post_id, url)
-            self.write_to_file(filepath, content)
-            #logging.debug("Fetched and saved link {} for post {}: {}".format(link_id, post_id, url))
-        except Exception as ex:
-            logging.error("save err: {}".format(str(ex)))
-
-
     async def pdf_converter(self, url, post_id, link_id):
         """Run command in subprocess (shell)"""
         try:
             filepath = self.get_path(link_id, post_id, url)
             self.create_dirs(filepath)
-            command = "wkhtmltopdf '{}' {}".format(url,filepath.replace('html','pdf'))
+            options = '--load-error-handling ignore --load-media-error-handling ignore'
+            command = "wkhtmltopdf {}  '{}' {}".format(options, url, filepath)
             # Create subprocess
             process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
-            print('Started:', command, '(pid = ' + str(process.pid) + ')')
+            logging.info('Coverter start: {}'.format(command))
 
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
-                print('Done:', command, '(pid = ' + str(process.pid) + ')')
+                logging.info('Converter done: {} '.format(command))
+                '''sending email'''
+                self.attach_send('test',filepath)
             else:
-                print('Failed:', command, '(pid = ' + str(process.pid) + ')')
-            result = stdout.decode().strip()
-            #print(result)
-            #return result
+                logging.info('Failed to convert: {}'.format(str(stderr)))
         except Exception as ex:
             logging.error("save err: {}".format(str(ex)))
-
-
-
 
 
 async def get_links_from_comments(post_id, storekeeper):
@@ -139,7 +165,7 @@ async def get_links_from_comments(post_id, storekeeper):
             _url = link.attrs["href"]
             parsed_url = urlparse(_url)
             if parsed_url.scheme and parsed_url.netloc:
-                print(_url)
+                #print(_url)
                 links.add(_url)
 
         return list(links)
@@ -174,7 +200,10 @@ def parse_main_page(html):
         try:
             id = int(tr.attrs["id"])
             url = tr.select_one("td.title a.storylink").attrs["href"]
-            posts[id] = url
+            descr = tr.select_one("td.title a.storylink").text
+            if any(word in descr.lower() for word in FILTERS):
+                print(descr)
+                posts[id] = {'url':url,'descr':descr}
         except KeyError:
             logging.error("Error on {} post (id: {}, url: {})".format(ind, id, url))
             continue
@@ -195,32 +224,22 @@ async def crawler(storekeeper, queue):
         if post_id in ready_post_ids:
             logging.debug("Post {} already saved".format(post_id))
             continue
-
         comments_links = await get_links_from_comments(post_id, storekeeper)
-        links = [url] + comments_links
-        print(links)
-        #logging.debug("Worker {} - found {} links in post {}".format(w_id, len(links), post_id))
-
+        links = [url['url']] + comments_links
         converter_tasks = [
             storekeeper.pdf_converter(link, post_id, ind) for ind, link in enumerate(links)
         ]
         await asyncio.gather(*converter_tasks)
-        '''tasks = [
-            storekeeper.load_and_save(link, post_id, ind) for ind, link in enumerate(links)
-        ]
 
-        await asyncio.gather(*tasks)'''
 
-async def monitor(storekeeper, queue):
+async def monitor(storekeeper, queue, sleeptimer):
     """
     Periodically check news.ycombinator.com for new articles.
-    Parse articles and links from comments and save to local files
     """
 
     iteration = 1
     while True:
         logging.info("Start crawl: {} iteration".format(iteration))
-
         try:
             await check_main_page(storekeeper, queue)
         except Exception:
@@ -228,43 +247,17 @@ async def monitor(storekeeper, queue):
             #for _ in range(num_workers):
             await queue.put(None)
             return
+        await asyncio.sleep(sleeptimer)
         iteration += 1
-'''
-        posts_saved = await fetcher.posts_saved
-        comments_links_saved = await fetcher.comments_links_saved
-        log.info("Saved {} posts, {} links from comments".format(
-            posts_saved, comments_links_saved
-        ))
-        log.info("Waiting for {} sec...".format(to_sleep))
-        await asyncio.sleep(to_sleep)'''
-
-
-
-
-
 
 def main(args):
     loop = asyncio.get_event_loop()
-    storekeeper = Storekeeper(args.storedir, loop)
+    storekeeper = Storekeeper(args.storedir, loop, SMTP_DICT)
     queue = asyncio.Queue(loop=loop)
-
     workers = [crawler(storekeeper, queue)]
-    workers.append(monitor(storekeeper, queue))
-
+    workers.append(monitor(storekeeper, queue,WAIT_AFTER_RETRY))
     loop.run_until_complete(asyncio.gather(*workers))
     loop.close()
-
-    #loop.run_until_complete(monitor_ycombinator(storekeeper, queue))
-    '''workers = [
-        worker_crawl_url(i, storekeeper, queue)
-        for i in range(3)
-    ]
-
-    loop.run_until_complete(asyncio.gather(*workers))'''
-    loop.close()
-    #loop = asyncio.get_event_loop()
-    #storekeeper =Storekeeper(args.storedir,loop)
-    #loop.run_until_complete(get_body(client, YCOMB_URL))
 
 
 
