@@ -43,11 +43,11 @@ class MailWorker(object):
     def attach_send(self, subject,file_to_send):
         server =self.smtp_server
         msg = MIMEMultipart()
-        msg['From'] = self.mailbox_from
+        msg['From'] = self.mail_from
         msg['To'] = self.mail_destination
         msg['Subject'] = subject
 
-        ctype, encoding = mimetypes.guess_type(self.filepath)
+        ctype, encoding = mimetypes.guess_type(self.file_to_send)
         if ctype is None or encoding is not None:
            ctype = 'application/octet-stream'
         maintype, subtype = ctype.split("/", 1)
