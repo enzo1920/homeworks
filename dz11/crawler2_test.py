@@ -27,7 +27,7 @@ YCOMB_TEMPLATE = "https://news.ycombinator.com/item?id={id}"
 RETRY = 3
 WAIT_AFTER_RETRY=20
 
-FILTERS=['arduino','raspberrypi','camera','streaming','diy','girls','farm','robots','sql','huawei']
+FILTERS=['arduino','raspberrypi','camera','streaming','diy','girls','farm','robots','sql','huawei','server']
 SMTP_DICT = {"server":"smtp.yandex.ru:465","mail_from":"carlcrawl@yandex.ru","mail_pass":"wrxsti14", "mail_destination":"enzo1920@ya.ru", "timeout_smtp":"20"}
 
 
@@ -47,7 +47,7 @@ class MailWorker(object):
         msg['To'] = self.mail_destination
         msg['Subject'] = subject
 
-        ctype, encoding = mimetypes.guess_type(self.file_to_send)
+        ctype, encoding = mimetypes.guess_type(file_to_send)
         if ctype is None or encoding is not None:
            ctype = 'application/octet-stream'
         maintype, subtype = ctype.split("/", 1)
@@ -75,17 +75,17 @@ class MailWorker(object):
             conn.login(self.mail_from, self.mail_pass)
             try:
                 conn.sendmail('{}<{}>'.format('crawler',self.mail_from),self.mail_destination, msg.as_string())
+                logging.info(" sent email from  {} to {}".format(self.mail_from,self.mail_destination))
             finally:
                 conn.quit()
         except Exception as exc:
-                logging.error("Error sent email ".format(str(exc)))
-
+                logging.error("Error sent email: {} ".format(str(exc)))
 
 
 
 class Storekeeper(MailWorker):
 
-    def __init__(self, store_dir,loop,smtp_dict):
+    def __init__(self, store_dir,loop, smtp_dict):
         self.__posts_saved = 0
         self.__comments_links_saved = 0
         self.store_dir = store_dir
@@ -145,6 +145,7 @@ class Storekeeper(MailWorker):
             if process.returncode == 0:
                 logging.info('Converter done: {} '.format(command))
                 '''sending email'''
+                print('send+++++++++++++++')
                 self.attach_send('test',filepath)
             else:
                 logging.info('Failed to convert: {}'.format(str(stderr)))
@@ -156,7 +157,7 @@ async def get_links_from_comments(post_id, storekeeper):
     """
     Fetch comments page and parse links from comments
     """
-    url = YCOMB_TEMPLATE.format(id=post_id)
+    url = YCOMB_TEMPLATE.format(id = post_id)
     links = set()
     try:
         html = await storekeeper.get_body(url)
