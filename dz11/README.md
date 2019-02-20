@@ -13,10 +13,10 @@ wkhtmltopdf
 xvfb
 
 Give examples
-Перед запуском необходимо выполнить:
+Перед запуском необходимо запустить виртуальный дисплей(для работы wkhtmltopdf):
 ```
 export DISPLAY=":1" 
-./xvfb_run.sh для запуска экрана
+./xvfb_run.sh 
 ```
 run:
 ./crawler2_pdf.py  для запуска с настройками по умолчанию
