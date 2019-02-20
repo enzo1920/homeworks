@@ -18,7 +18,7 @@ Give examples
 Перед запуском необходимо запустить виртуальный дисплей(для работы wkhtmltopdf):
 ```
 export DISPLAY=":1" 
-./xvfb_run.sh 
+./xvfb_run.sh start
 ```
 run:
 ```
