@@ -14,8 +14,8 @@ xvfb
 
 Give examples
 Перед запуском необходимо выполнить:
->export DISPLAY=":1" 
->./xvfb_run.sh для запуска экрана
+export DISPLAY=":1" 
+./xvfb_run.sh для запуска экрана
 run:
 ./crawler2_pdf.py  для запуска с настройками по умолчанию
 ./crawler2_pdf.py  --config <имя файла> для запуска с настройками пользователя
