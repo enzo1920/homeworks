@@ -1,16 +1,18 @@
-# Project Title
+# Crawler to PDF
 
-Crawler to PDF
+
 
 ## Getting Started
 Это модификация ДЗ-11
 Краулер скачивает интересующие страницы с сайта news.ycombinator.com, сохраняет их в pdf и отправляет на почту.
 Используется утилита wkhtmltopdf для конвертации вэбстраниц в pdf.
 ### Prerequisites
-Тесты проводились на ubuntu 18.04
+```
 python3.7
+smtplib
 wkhtmltopdf
 xvfb
+```
 
 Give examples
 Перед запуском необходимо запустить виртуальный дисплей(для работы wkhtmltopdf):
