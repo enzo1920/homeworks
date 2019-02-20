@@ -19,17 +19,19 @@ export DISPLAY=":1"
 ./xvfb_run.sh 
 ```
 run:
+```
 ./crawler2_pdf.py  для запуска с настройками по умолчанию
 ./crawler2_pdf.py  --config <имя файла> для запуска с настройками пользователя
+```
 Формать конфига
+```
 [ConfiLog1]
 server:ctest.ctest.com:25,
 mail_from":ctest@test.com,
 mail_pass":testpass,
 mail_destination":tomail@ctest.com,
 timeout_smtp:20
-
-
+```
 Файлы в pdf сохраняются в storedir
 Далее отправляются по поче.
 ## Running the tests
